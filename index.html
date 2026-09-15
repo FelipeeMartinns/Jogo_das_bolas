@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jogo das Bolas</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ============ MENU ============ -->
+  <div id="screen-menu" class="screen">
+    <div class="menu-box">
+      <h1 class="title">JOGO DAS BOLAS</h1>
+      <p class="subtitle">Um jogo de luta entre bolas elementais!</p>
+
+      <div class="menu-buttons">
+        <button class="btn btn-primary" onclick="startSelect('hotseat')">2 Jogadores (Hot-seat)</button>
+        <button class="btn btn-primary" onclick="startSelect('machine')">Vs Máquina</button>
+        <button class="btn btn-disabled" disabled title="Em breve">Online (em breve)</button>
+      </div>
+
+      <div class="menu-plain-row">
+        <button class="btn btn-plain" onclick="toggleRules()">Como jogar</button>
+        <button class="btn btn-plain" onclick="openSettings()">Configurações</button>
+      </div>
+
+      <div id="rules-box" class="rules-box" hidden>
+        <h3>Mecânicas</h3>
+        <ul>
+          <li>Cada jogada escolhe uma ação: <b>Ataque</b>, <b>Defesa</b>, <b>Projétil</b> ou <b>Refletir</b>.</li>
+          <li><b>Ataque</b> vence Projétil · <b>Projétil</b> vence Defesa · <b>Defesa</b> vence Ataque e Refletir · <b>Refletir</b> devolve um Projétil contra quem o lançou.</li>
+          <li>Defender um ataque com sucesso causa dano no atacante.</li>
+          <li>Cada ação tem 3 usos. Quando os 3 acabam, eles recarregam no turno seguinte.</li>
+          <li><b>Combo</b> (3 no total, NÃO recarregam): permite jogar 2 ações no mesmo turno.</li>
+          <li>Um projétil ou ataque sem oposição no turno acerta direto.</li>
+          <li>Você tem <b>5 segundos</b> por turno (3 segundos no frenesi) para escolher e confirmar. Se não confirmar, o que já foi escolhido é usado; sem escolha, nenhuma ação.</li>
+          <li><b>Frenesi:</b> quando um jogador chega à metade da vida, o tempo cai para 3 segundos.</li>
+        </ul>
+        <h3>Bolas</h3>
+        <ul>
+          <li><b>Fogo:</b> todo projétil que acerta aumenta +2 de dano permanente nos próximos projéteis.</li>
+          <li><b>Pedra:</b> ataques causam dano dobrado.</li>
+          <li><b>Água:</b> refletir uma habilidade inimiga causa dano dobrado.</li>
+          <li><b>Ar:</b> +1 de dano ao acertar um projétil, +2 ao acertar defesa ou ao refletir.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SELEÇÃO ============ -->
+  <div id="screen-select" class="screen" hidden>
+    <h2 id="select-title">Jogador 1 — escolha sua bola</h2>
+    <div id="select-grid" class="select-grid"></div>
+    <div id="select-note" class="select-note"></div>
+  </div>
+
+  <!-- ============ BATALHA ============ -->
+  <div id="screen-battle" class="screen screen-battle" hidden>
+    <div id="top-hud">
+      <div class="hud-left">
+        <div class="hud-name" id="p1-hud-name">-</div>
+        <div class="hp-bar"><div id="p1-hp-fill"></div></div>
+        <div class="hud-meta" id="p1-hud-meta">-</div>
+      </div>
+      <div class="hud-center">
+        <div id="timer-label">5</div>
+        <div id="phase-label">Escolham suas ações!</div>
+      </div>
+      <div class="hud-right">
+        <div class="hud-name" id="p2-hud-name">-</div>
+        <div class="hp-bar"><div id="p2-hp-fill"></div></div>
+        <div class="hud-meta" id="p2-hud-meta">-</div>
+      </div>
+    </div>
+
+    <div id="arena-row">
+      <canvas id="arena" width="820" height="420"></canvas>
+      <div id="banner" hidden></div>
+      <div id="log"></div>
+    </div>
+
+    <div id="panels">
+      <div class="panel" id="panel-1">
+        <div class="panel-head">JOGADOR 1</div>
+        <div class="action-buttons" id="buttons-1"></div>
+        <div class="selected" id="selected-1"></div>
+        <button class="btn btn-ok" id="ok-1" onclick="confirmPlayer('p1')">OK [A]</button>
+      </div>
+      <div class="panel panel-machine" id="panel-2">
+        <div class="panel-head" id="panel-2-head">JOGADOR 2</div>
+        <div class="action-buttons" id="buttons-2"></div>
+        <div class="selected" id="selected-2"></div>
+        <button class="btn btn-ok" id="ok-2" onclick="confirmPlayer('p2')">OK [L]</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ GAME OVER ============ -->
+  <div id="gameover" class="overlay" hidden>
+    <div class="overlay-box">
+      <h1 id="result-title"></h1>
+      <p id="result-sub"></p>
+      <button class="btn btn-primary" onclick="backToMenu()">Voltar ao menu</button>
+      <button class="btn btn-secondary" onclick="rematch()">Revanche</button>
+    </div>
+  </div>
+
+  <!-- ============ CONFIGURAÇÕES ============ -->
+  <div id="settings" class="overlay" hidden>
+    <div class="overlay-box">
+      <h1>Configurações</h1>
+      <div class="setting-row">
+        <div>
+          <div class="setting-name">Música do menu</div>
+          <div class="setting-sub">Trilha ambiente na tela inicial</div>
+        </div>
+        <button class="toggle on" id="toggle-menu-music" onclick="toggleSetting('menuMusic')"><span></span></button>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-name">Música de combate</div>
+          <div class="setting-sub">Trilha durante as batalhas</div>
+        </div>
+        <button class="toggle on" id="toggle-combat-music" onclick="toggleSetting('combatMusic')"><span></span></button>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-name">Efeitos sonoros</div>
+          <div class="setting-sub">Sons de golpe, bloqueio, vitória...</div>
+        </div>
+        <button class="toggle on" id="toggle-sfx" onclick="toggleSetting('sfx')"><span></span></button>
+      </div>
+      <button class="btn btn-primary" onclick="closeSettings()">Fechar</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
