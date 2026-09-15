@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Jogo das Bolas</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -34,15 +34,17 @@
           <li>Cada ação tem 3 usos. Quando os 3 acabam, eles recarregam no turno seguinte.</li>
           <li><b>Combo</b> (3 no total, NÃO recarregam): permite jogar 2 ações no mesmo turno.</li>
           <li>Um projétil ou ataque sem oposição no turno acerta direto.</li>
-          <li>Você tem <b>5 segundos</b> por turno (3 segundos no frenesi) para escolher e confirmar. Se não confirmar, o que já foi escolhido é usado; sem escolha, nenhuma ação.</li>
+          <li>Você tem <b>5 segundos</b> por turno (3 segundos no frenesi) para escolher e confirmar. Se o inimigo for uma bola <b>Tempo</b>, você tem <b>1 segundo a menos</b>.</li>
           <li><b>Frenesi:</b> quando um jogador chega à metade da vida, o tempo cai para 3 segundos.</li>
         </ul>
         <h3>Bolas</h3>
         <ul>
-          <li><b>Fogo:</b> todo projétil que acerta aumenta +2 de dano permanente nos próximos projéteis.</li>
+          <li><b>Fogo:</b> todo projétil acertado acumula +2 de stacks. Projéteis causam só o dano base; a habilidade ativa <b>Incineração</b> (botão no turno) consome os stacks e lança todo o dano acumulado no inimigo.</li>
           <li><b>Pedra:</b> ataques causam dano dobrado.</li>
           <li><b>Água:</b> refletir uma habilidade inimiga causa dano dobrado.</li>
           <li><b>Ar:</b> +1 de dano ao acertar um projétil, +2 ao acertar defesa ou ao refletir.</li>
+          <li><b>Raio:</b> ao chegar à metade da vida, energiza. Usar a habilidade ativa (botão <b>Raio</b> no turno) eletrocuta o inimigo e bloqueia 1 ação aleatória dele por <b>3 turnos</b> — além disso, o Raio ganha <b>dano dobrado permanente</b> pelo resto da partida (uso único).</li>
+          <li><b>Tempo:</b> reduz em <b>1 segundo</b> apenas o tempo do inimigo (vale mesmo no modo Vs Máquina, se a máquina for o Tempo). Ganha <b>1 stack</b> por ponto de dano sofrido (máx. 7); a habilidade ativa <b>Regenerar</b> (botão no turno, <b>uso único</b>) recupera <b>1 de vida por stack</b> e, após usar, o Tempo <b>perde 1 de dano em todas as ações por 3 turnos</b>.</li>
         </ul>
       </div>
     </div>
@@ -77,12 +79,11 @@
     <div id="arena-row">
       <canvas id="arena" width="820" height="420"></canvas>
       <div id="banner" hidden></div>
-      <div id="log"></div>
     </div>
 
     <div id="panels">
       <div class="panel" id="panel-1">
-        <div class="panel-head">JOGADOR 1</div>
+        <div class="panel-head" id="panel-1-head">JOGADOR 1</div>
         <div class="action-buttons" id="buttons-1"></div>
         <div class="selected" id="selected-1"></div>
         <button class="btn btn-ok" id="ok-1" onclick="confirmPlayer('p1')">OK [A]</button>

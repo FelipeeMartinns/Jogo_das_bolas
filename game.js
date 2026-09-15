@@ -14,13 +14,17 @@
 
 const ELEMENTS = {
   fogo:  { nome: 'Fogo',  cor: '#ff6b35', glow: '#ff6b35',
-           desc: 'Todo projétil que acerta aumenta +2 de dano permanente nos seus próximos projéteis.' },
+           desc: 'Todo projétil acertado acumula +2 de stacks. A habilidade ativa Incineração consome os stacks e lança todo o dano acumulado.' },
   pedra: { nome: 'Pedra', cor: '#a8b0bd', glow: '#8a93a3',
            desc: 'Ataques causam dano dobrado.' },
   agua:  { nome: 'Água',  cor: '#35a7ff', glow: '#35a7ff',
            desc: 'Refletir uma habilidade inimiga causa dano dobrado.' },
-  ar:    { nome: 'Ar',    cor: '#eaf6ff', glow: '#cfe8ff',
-           desc: '+1 de dano ao acertar um projétil, +2 ao acertar defesa ou ao refletir.' },
+ar:    { nome: 'Ar',    cor: '#eaf6ff', glow: '#cfe8ff',
+            desc: '+1 de dano ao acertar um projétil, +2 ao acertar defesa ou ao refletir.' },
+   raio:  { nome: 'Raio',  cor: '#b06bff', glow: '#b06bff',
+            desc: 'Ao chegar à metade da vida, energiza. A habilidade ativa eletrocuta o inimigo (bloqueia 1 ação aleatória por 3 turnos) e concede dano dobrado permanente pelo resto da partida (uso único).' },
+   tempo: { nome: 'Tempo', cor: '#35e0c0', glow: '#2dd4b3',
+            desc: 'Passivo: reduz em 1 segundo o tempo do inimigo. Ganha 1 stack por ponto de dano sofrido (máx. 7). A habilidade Regenerar (uso único) cura 1 de vida por stack e faz o Tempo perder 1 de dano em todas as ações por 3 turnos.' },
 };
 
 const ACTIONS = {
@@ -28,6 +32,9 @@ const ACTIONS = {
   defesa:   { nome: 'Defesa',   cls: '', desc: 'Vence Ataque e Refletir · contra-ataca' },
   projetil: { nome: 'Projétil', cls: '', desc: 'Vence Defesa' },
   refletir: { nome: 'Refletir', cls: '', desc: 'Devolve Projétil contra quem lançou' },
+  raio:    { nome: 'Raio',    cls: '', desc: 'Habilidade ativa: eletrocuta o inimigo, bloqueia 1 ação aleatória por 3 turnos e concede dano x2 permanente (uso único)' },
+  incinerar: { nome: 'Incineração', cls: '', desc: 'Habilidade ativa (Fogo): consome os stacks e lança todo o dano acumulado no inimigo' },
+  tempo:   { nome: 'Regenerar', cls: '', desc: 'Habilidade ativa (Tempo, uso único): consome os stacks e recupera 1 de vida por stack. Depois de usar, o Tempo perde 1 de dano em todas as ações por 3 turnos' },
 };
 
 const BASE_DMG = 2;
@@ -36,6 +43,8 @@ const DECISION_SLOW = 5000;
 const DECISION_FAST = 3000;
 const USE_PER_ACTION = 3;
 const MAX_TOP_ACTIONS = 2;
+const TEMPO_STACK_CAP = 7;            // máx. de stacks da bola Tempo
+const TEMPO_HEAL_PER_STACK = 1;       // vida recuperada por stack na Regenerar
 
 const KEYS = {
   p1: { ataque: 'KeyQ', defesa: 'KeyW', projetil: 'KeyE', refletir: 'KeyR', combo: 'KeyT', ok: 'KeyA' },
@@ -48,6 +57,8 @@ const KEY_LABEL = {
 };
 
 const ACTION_ORDER = ['ataque', 'defesa', 'projetil', 'refletir'];
+const ACTIVE_ACTIONS = ['raio', 'incinerar', 'tempo'];
+function isActiveAction(a) { return ACTIVE_ACTIONS.includes(a); }
 
 /* ---------------- Estado geral ---------------- */
 let game = null;        // dados da partida atual
@@ -59,6 +70,15 @@ let currentMode = 'hotseat';
 let currentScreen = 'menu';
 
 const $ = id => document.getElementById(id);
+
+/* evita que cliques/toques rápidos no mesmo controle desfaçam a escolha */
+const pickGuard = {};
+function quickPick(key, ms) {
+  const now = performance.now();
+  const prev = pickGuard[key];
+  pickGuard[key] = now;
+  return prev !== undefined && now - prev < (ms || 350);
+}
 
 /* ---------------- Sons (WebAudio) ---------------- */
 function ensureAudio() {
@@ -94,6 +114,9 @@ const sfx = {
   block:   () => { tone(420, 0.1, 'square', 0.1); tone(210, 0.12, 'square', 0.08, 0.05); },
   reflect: () => { tone(900, 0.09, 'sine', 0.12); tone(1200, 0.12, 'sine', 0.1, 0.05); },
   frenzy:  () => { tone(660, 0.1, 'square', 0.14); tone(880, 0.12, 'square', 0.14, 0.12); },
+  zap:     () => { tone(160, 0.16, 'sawtooth', 0.14); tone(900, 0.06, 'sawtooth', 0.09, 0.05); tone(2400, 0.08, 'square', 0.06, 0.1); tone(300, 0.14, 'sawtooth', 0.1, 0.13); },
+  burn:    () => { tone(90, 0.42, 'sawtooth', 0.16); tone(150, 0.36, 'sawtooth', 0.12, 0.08); tone(2100, 0.16, 'sine', 0.05, 0.06); },
+  heal:    () => { tone(520, 0.12, 'sine', 0.12); tone(780, 0.18, 'sine', 0.1, 0.1); tone(1040, 0.22, 'sine', 0.08, 0.22); },
   win:     () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.2, 'triangle', 0.12, i * 0.14)); },
   lose:    () => { [392, 349, 329, 261].forEach((f, i) => tone(f, 0.22, 'sine', 0.1, i * 0.16)); },
 };
@@ -329,6 +352,7 @@ function backToMenu() {
 }
 
 function startSelect(mode) {
+  if (quickPick('startSelect')) return;
   currentMode = mode;
   ensureAudio();
   sfx.click();
@@ -360,7 +384,8 @@ function buildSelect(playerKey) {
       <div class="select-ball ${el}"></div>
       <h3>${data.nome}</h3>
       <p>${data.desc}</p>`;
-    card.addEventListener('click', () => {
+    card.addEventListener('click', e => {
+      if (e.detail > 1) return;
       ensureAudio();
       sfx.click();
       selectState.chosen = el;
@@ -373,6 +398,7 @@ function buildSelect(playerKey) {
 }
 
 function finishSelect(element, playerKey) {
+  if (quickPick('finishSelect:' + playerKey)) return;
   if (playerKey === 'p1') {
     selectStateP1 = element;
     if (currentMode === 'machine') {
@@ -399,12 +425,23 @@ function makePlayer(key, element, isAI, name) {
     key,
     name,
     isAI,
-    element,
+element,
+    deadline: 0,          // fim da fase de decisão deste jogador (milissegundos)
     hp: MAX_HP,
     maxHp: MAX_HP,
     counts: { ataque: USE_PER_ACTION, defesa: USE_PER_ACTION, projetil: USE_PER_ACTION, refletir: USE_PER_ACTION },
     combos: 3,
     fireBonus: 0,
+    charged: false,       // raio: energizada (habilidade disponível)
+    chargedUsed: false,   // raio: habilidade ativa já foi usada (uso único)
+    overPowered: false,   // raio: após eletrocutar, dano x2 permanente pelo resto da partida
+    blockedAction: null,  // ação bloqueada por um Raio inimigo
+    blockTurns: 0,        // turnos restantes do bloqueio
+    blockTurn: 0,         // turno em que o bloqueio foi aplicado (não conta o próprio turno)
+    tempoStacks: 0,       // tempo: stacks de dano sofrido (máx. 7)
+    tempoHealUsed: false, // tempo: Regenerar já foi usada (uso único por partida)
+    tempoWeakTurns: 0,    // tempo: turnos restantes com -1 de dano
+    tempoWeakTurn: 0,     // tempo: turno em que o debuff começou (não conta o próprio turno)
     selection: { combo: false, actions: [] },
     confirmed: false,
     lastActions: [],
@@ -438,7 +475,6 @@ function startBattle(elementP1, elementP2) {
 
   setupPanel(1);
   setupPanel(2);
-  $('log').innerHTML = '';
   $('banner').hidden = true;
   $('gameover').hidden = true;
 
@@ -467,6 +503,7 @@ function newAnimState() {
     projectiles: [],
     rings: [],
     particles: [],
+    lightnings: [],
     bannerFlash: 0,
   };
 }
@@ -490,17 +527,34 @@ function refreshHUD() {
 }
 
 function hudMeta(p) {
+  const block = p.blockedAction && p.blockTurns > 0 ? p.blockedAction : null;
   const chips = ACTION_ORDER.map(a => {
     const tag = a === 'ataque' ? 'Atk' : a === 'defesa' ? 'Def' : a === 'projetil' ? 'Proj' : 'Ref';
-    return `<span class="chip ${p.counts[a] === 0 ? 'out' : ''}">${tag} <span class="num">${p.counts[a]}</span></span>`;
+    return `<span class="chip ${p.counts[a] === 0 ? 'out' : ''}${a === block ? ' blocked' : ''}">${tag} <span class="num">${p.counts[a]}</span></span>`;
   }).join('');
   const combo = `<span class="chip ${p.combos === 0 ? 'out' : ''}">Combo <span class="num">${p.combos}</span></span>`;
   const hp = `<span class="chip">HP <span class="num">${Math.max(0, p.hp)}</span></span>`;
   const fire = p.element === 'fogo'
-    ? `<span class="chip" style="color:#ffd08a">dano projétil <span class="num">${BASE_DMG + p.fireBonus}</span></span>`
+    ? `<span class="chip" style="color:#ffd08a">🔥 stacks <span class="num">${p.fireBonus}</span></span>`
+    : '';
+  const raio = p.element === 'raio'
+    ? (p.overPowered
+        ? `<span class="chip" style="color:#ffd23f">⚡ Dano x2 permanente</span>`
+        : p.chargedUsed ? `<span class="chip">Carga usada</span>`
+        : p.charged ? `<span class="chip" style="color:#ffd23f">⚡ Energizada</span>` : '')
+    : '';
+  const blockChip = block
+    ? `<span class="chip blocked">⚡ ${ACTIONS[block].nome} (${p.blockTurns} turno${p.blockTurns > 1 ? 's' : ''})</span>`
     : '';
   const el = `<span class="chip" style="color:${ELEMENTS[p.element].cor}">${ELEMENTS[p.element].nome}</span>`;
-  return el + hp + chips + combo + fire;
+  const tempo = p.element === 'tempo'
+    ? `<span class="chip" style="color:#35e0c0">⏱ Inimigo -1s</span>`
+      + (p.tempoHealUsed
+        ? `<span class="chip">Regenerar usada</span>`
+        : `<span class="chip" style="color:#7ff3dc">stacks <span class="num">${p.tempoStacks}</span></span>`)
+      + (p.tempoWeakTurns > 0 ? `<span class="chip" style="color:#ffb0a0">-1 dano (${p.tempoWeakTurns})</span>` : '')
+    : '';
+  return blockChip + el + hp + chips + combo + fire + raio + tempo;
 }
 
 function setupPanel(n) {
@@ -519,7 +573,10 @@ function setupPanel(n) {
       <span class="key">[${KEY_LABEL[panelKey][a]}]</span>
       <span class="count">×${player.counts[a]}</span>`;
     b.disabled = isAI;
-    b.addEventListener('click', () => onPickAction(panelKey, a));
+    b.addEventListener('click', e => {
+      if (e.detail > 1) return;
+      onPickAction(panelKey, a);
+    });
     box.appendChild(b);
   }
 
@@ -532,8 +589,29 @@ function setupPanel(n) {
     <span class="key">[${KEY_LABEL[panelKey].combo}]</span>
     <span class="count" id="${panelKey}-combo-count">×${player.combos}</span>`;
   comboBtn.disabled = isAI;
-  comboBtn.addEventListener('click', () => onPickCombo(panelKey));
+  comboBtn.addEventListener('click', e => {
+    if (e.detail > 1) return;
+    onPickCombo(panelKey);
+  });
   box.appendChild(comboBtn);
+
+  const actives = player.element === 'raio' ? ['raio'] : player.element === 'fogo' ? ['incinerar'] : player.element === 'tempo' ? ['tempo'] : [];
+  for (const act of actives) {
+    const aBtn = document.createElement('button');
+    aBtn.className = 'action-btn active-btn ' + (act === 'raio' ? 'thunder' : act === 'incinerar' ? 'fire' : 'tempo-ball');
+    aBtn.dataset.act = act;
+    aBtn.dataset.player = panelKey;
+    aBtn.id = panelKey + '-' + act + '-btn';
+    aBtn.innerHTML = `<span class="act-nome">${ACTIONS[act].nome}</span>
+      <span class="key">[ativa]</span>
+      <span class="count">×1</span>`;
+    aBtn.disabled = true;
+    aBtn.addEventListener('click', e => {
+      if (e.detail > 1) return;
+      onPickAction(panelKey, act);
+    });
+    box.appendChild(aBtn);
+  }
 
   const okBtn = $('ok-' + n);
   okBtn.disabled = isAI;
@@ -549,28 +627,42 @@ function refreshPanel(playerKey) {
   box.querySelectorAll('.action-btn').forEach(btn => {
     const act = btn.dataset.act;
     const isCombo = act === 'combo';
+    const isAct = isActiveAction(act);
     const picked = isCombo ? p.selection.combo : p.selection.actions.includes(act);
+    const activeBlock = !isCombo && !isAct && p.blockedAction === act && p.blockTurns > 0;
     btn.classList.toggle('picked', picked);
     btn.classList.toggle('combo-picked', isCombo && picked);
+    btn.classList.toggle('blocked', activeBlock);
     btn.classList.toggle('slot0', !isCombo && p.selection.actions[0] === act);
     btn.classList.toggle('slot1', !isCombo && p.selection.actions[1] === act);
 
     if (!p.confirmed && !p.isAI) {
       if (isCombo) {
         btn.disabled = p.combos <= 0;
+      } else if (isAct) {
+        const ready = act === 'raio' ? p.charged : act === 'incinerar' ? p.fireBonus > 0 : (p.tempoStacks > 0 && !p.tempoHealUsed);
+        const slotFree = p.selection.actions.length < (p.selection.combo ? MAX_TOP_ACTIONS : 1);
+        btn.disabled = !ready || (!p.selection.actions.includes(act) && !slotFree);
       } else {
         const instances = p.selection.actions.filter(x => x === act).length;
-        const slotFree = p.selection.actions.length < (p.selection.combo ? MAX_TOP_ACTIONS : 1);
-        btn.disabled = (instances === 0 && !slotFree) || p.counts[act] <= 0;
+        if (p.selection.combo) {
+          const slotFree = p.selection.actions.length < MAX_TOP_ACTIONS;
+          btn.disabled = (instances === 0 && !slotFree) || p.counts[act] <= 0 || activeBlock;
+        } else {
+          btn.disabled = p.counts[act] <= 0 || activeBlock;
+        }
       }
       btn.style.opacity = '';
     } else {
       btn.disabled = true;
     }
 
-    if (!isCombo) {
+    if (!isCombo && !isAct) {
       const countEl = btn.querySelector('.count');
       if (countEl) countEl.textContent = '×' + p.counts[act];
+    } else if (isAct && act === 'tempo' && p.tempoHealUsed) {
+      const countEl = btn.querySelector('.count');
+      if (countEl) countEl.textContent = '×0';
     }
   });
 
@@ -596,19 +688,55 @@ function onPickAction(playerKey, act) {
   const p = game.players[playerKey];
   if (p.isAI || p.confirmed || game.state !== 'decision') return;
   const s = p.selection;
+  const quick = quickPick(playerKey + ':' + act);
 
   sfx.click();
+  if (p.blockedAction === act && p.blockTurns > 0) {
+    bannerText(`${ACTIONS[act].nome} está bloqueada pelo Raio!`);
+    return;
+  }
+  if (isActiveAction(act)) {
+    if (s.actions.includes(act)) {
+      if (quick) return;
+      s.actions = s.actions.filter(x => x !== act);
+    } else {
+      const max = s.combo ? MAX_TOP_ACTIONS : 1;
+      if (s.actions.length >= max) {
+        bannerText(s.combo ? 'Máximo de 2 ações por turno' : 'Ative o Combo para uma 2ª ação');
+        return;
+      }
+      s.actions.push(act);
+    }
+    refreshPanel(playerKey);
+    refreshHUD();
+    return;
+  }
+
   const instances = s.actions.filter(x => x === act).length;
+  if (!s.combo) {
+    /* escolha única: a última ação clicada prevalece (não é preciso desmarcar antes) */
+    if (instances === 0) {
+      if (p.counts[act] <= 0) return;
+      s.actions = [act];
+    } else {
+      if (quick) return;
+      s.actions.splice(s.actions.lastIndexOf(act), 1);
+    }
+    refreshPanel(playerKey);
+    refreshHUD();
+    return;
+  }
+
   if (instances === 0) {
-    const max = s.combo ? MAX_TOP_ACTIONS : 1;
-    if (s.actions.length >= max) {
-      bannerText(s.combo ? 'Máximo de 2 ações por turno' : 'Ative o Combo para uma 2ª ação');
+    if (s.actions.length >= MAX_TOP_ACTIONS) {
+      bannerText('Máximo de 2 ações por turno');
       return;
     }
     s.actions.push(act);
-  } else if (s.combo && instances === 1 && s.actions.length < MAX_TOP_ACTIONS && p.counts[act] > instances) {
+  } else if (instances === 1 && s.actions.length < MAX_TOP_ACTIONS && p.counts[act] > instances) {
     s.actions.push(act);
   } else {
+    if (quick) return;
     s.actions.splice(s.actions.lastIndexOf(act), 1);
   }
   refreshPanel(playerKey);
@@ -619,6 +747,7 @@ function onPickCombo(playerKey) {
   ensureAudio();
   const p = game.players[playerKey];
   if (p.isAI || p.confirmed || game.state !== 'decision') return;
+  if (quickPick('combo:' + playerKey)) return;
   const s = p.selection;
   if (s.combo) {
     s.combo = false;
@@ -646,6 +775,11 @@ function lockPlayer(playerKey) {
   if (p.confirmed) return;
   p.confirmed = true;
   const s = p.selection;
+  if (s.actions.includes('raio') && p.element === 'raio' && p.charged) {
+    p.charged = false;
+    p.chargedUsed = true;
+    p.overPowered = true;
+  }
   if (s.combo && s.actions.length > 0 && p.combos > 0) p.combos--;
   s.actions.forEach(a => {
     if (p.counts[a] > 0) p.counts[a]--;
@@ -653,12 +787,21 @@ function lockPlayer(playerKey) {
   refreshPanel(playerKey);
 }
 
+function decisionTimeFor(p) {
+  const opp = game.players[p1Key(p)];
+  let ms = game.frenzy ? DECISION_FAST : DECISION_SLOW;
+  if (opp.element === 'tempo') ms -= 1000;
+  return Math.max(1000, ms);
+}
+
 /* ---------------- Turno de decisão ---------------- */
 function startDecision() {
   const p1 = game.players.p1, p2 = game.players.p2;
   game.state = 'decision';
-  game.phaseDuration = game.frenzy ? DECISION_FAST : DECISION_SLOW;
   game.phaseStart = performance.now();
+  p1.deadline = game.phaseStart + decisionTimeFor(p1);
+  p2.deadline = game.phaseStart + decisionTimeFor(p2);
+  game.phaseDuration = Math.min(p1.deadline, p2.deadline) - game.phaseStart;
 
   ACTION_ORDER.forEach(a => {
     if (p1.counts[a] === 0) p1.counts[a] = USE_PER_ACTION;
@@ -673,6 +816,7 @@ function startDecision() {
   refreshPanel('p1');
   refreshPanel('p2');
   refreshHUD();
+  updateCharge();
 
   if (game.mode === 'machine') {
     const think = 700 + Math.random() * 900;
@@ -681,6 +825,20 @@ function startDecision() {
         aiLock(game.players.p2);
       }
     }, think);
+  }
+}
+
+function updateCharge() {
+  for (const k of ['p1', 'p2']) {
+    const p = game.players[k];
+    if (p.element === 'raio' && !p.chargedUsed && !p.charged && p.hp <= p.maxHp / 2) {
+      p.charged = true;
+      sfx.zap();
+      bannerText(`⚡ ${p.name} ENERGIZOU! Habilidade Raio pronta!`, 1800);
+      log(`<span class="log-entry big">⚡ ${p.name} (Raio): energizou! Usar a habilidade no turno eletrocuta o inimigo (bloqueia 1 ação aleatória por 3 turnos) e concede <b>dano x2 permanente</b> pelo resto da partida.</span>`);
+      refreshPanel(k);
+      refreshHUD();
+    }
   }
 }
 
@@ -694,6 +852,21 @@ function aiThink(p) {
   const opp = game.players[p1Key(p)];
   const freq = { ataque: 0, defesa: 0, projetil: 0, refletir: 0 };
   opp.lastActions.forEach(a => { if (a in freq) freq[a]++; });
+
+  if (p.element === 'fogo' && p.fireBonus >= 4 && Math.random() < 0.5) {
+    p.selection = { combo: false, actions: ['incinerar'] };
+    return;
+  }
+
+  if (p.element === 'raio' && p.charged && Math.random() < 0.7) {
+    p.selection = { combo: false, actions: ['raio'] };
+    return;
+  }
+
+  if (p.element === 'tempo' && !p.tempoHealUsed && p.tempoStacks >= 4 && Math.random() < 0.6) {
+    p.selection = { combo: false, actions: ['tempo'] };
+    return;
+  }
 
   const counters = {
     ataque: ['defesa'],
@@ -719,7 +892,11 @@ function p1Key(x) { return x.key === 'p1' ? 'p2' : 'p1'; }
 
 function availableAction(p, preferred, exclude) {
   const skipRepetir = exclude && p.counts[exclude] < 2;
-  const opts = ACTION_ORDER.filter(a => p.counts[a] > 0 && (!skipRepetir || a !== exclude));
+  const blocked = p.blockedAction && p.blockTurns > 0;
+  const opts = ACTION_ORDER.filter(a =>
+    p.counts[a] > 0 &&
+    (!skipRepetir || a !== exclude) &&
+    !(blocked && a === p.blockedAction));
   if (opts.length === 0) return null;
   if (preferred && opts.includes(preferred)) return preferred;
   return pick(opts);
@@ -734,30 +911,55 @@ function planRound() {
     const a = p1.selection.actions[i];
     const b = p2.selection.actions[i];
     if (a && b) {
-      const r = resolveDuel('p1', a, 'p2', b);
-      if (r.none) events.push({ kind: 'none' });
-      else if (r.clash) {
-        events.push({ kind: 'hit', winner: 'p1', loser: 'p2', action: 'ataque', beaten: 'ataque', dmg: calcDamage(p1, 'ataque', 'ataque'), clash: true });
-        events.push({ kind: 'hit', winner: 'p2', loser: 'p1', action: 'ataque', beaten: 'ataque', dmg: calcDamage(p2, 'ataque', 'ataque'), clash: true });
+      if (isActiveAction(a) || isActiveAction(b)) {
+        if (isActiveAction(a)) events.push(activeEvent('p1', 'p2', a));
+        if (isActiveAction(b)) events.push(activeEvent('p2', 'p1', b));
+        if (isActiveAction(a) && isActiveAction(b)) continue;
+        const channel = isActiveAction(a) ? 'p1' : 'p2';
+        const other = isActiveAction(a) ? 'p2' : 'p1';
+        const otherAct = isActiveAction(a) ? b : a;
+        if (otherAct === 'ataque' || otherAct === 'projetil') {
+          events.push({ kind: 'hit', winner: other, loser: channel, action: otherAct, beaten: '', dmg: calcDamage(game.players[other], otherAct, '') });
+        } else {
+          events.push({ kind: 'none' });
+        }
       } else {
-        const W = r.winner === 'p1' ? p1 : p2;
-        const act = r.winnerAct, beat = r.winnerBeaten;
-        events.push({
-          kind: act === 'refletir' ? 'reflect' : 'hit',
-          winner: r.winner, loser: r.loser,
-          action: act, beaten: beat,
-          dmg: calcDamage(W, act, beat),
-        });
+        const r = resolveDuel('p1', a, 'p2', b);
+        if (r.none) events.push({ kind: 'none' });
+        else if (r.clash) {
+          events.push({ kind: 'hit', winner: 'p1', loser: 'p2', action: 'ataque', beaten: 'ataque', dmg: calcDamage(p1, 'ataque', 'ataque'), clash: true });
+          events.push({ kind: 'hit', winner: 'p2', loser: 'p1', action: 'ataque', beaten: 'ataque', dmg: calcDamage(p2, 'ataque', 'ataque'), clash: true });
+        } else {
+          const W = r.winner === 'p1' ? p1 : p2;
+          const act = r.winnerAct, beat = r.winnerBeaten;
+          events.push({
+            kind: act === 'refletir' ? 'reflect' : 'hit',
+            winner: r.winner, loser: r.loser,
+            action: act, beaten: beat,
+            dmg: calcDamage(W, act, beat),
+          });
+        }
       }
-    } else if (a && (a === 'ataque' || a === 'projetil')) {
-      events.push({ kind: 'hit', winner: 'p1', loser: 'p2', action: a, beaten: '', dmg: calcDamage(p1, a, '') });
-    } else if (b && (b === 'ataque' || b === 'projetil')) {
-      events.push({ kind: 'hit', winner: 'p2', loser: 'p1', action: b, beaten: '', dmg: calcDamage(p2, b, '') });
+    } else if (a) {
+      if (isActiveAction(a)) events.push(activeEvent('p1', 'p2', a));
+      else if (a === 'ataque' || a === 'projetil') events.push({ kind: 'hit', winner: 'p1', loser: 'p2', action: a, beaten: '', dmg: calcDamage(p1, a, '') });
+      else events.push({ kind: 'none' });
+    } else if (b) {
+      if (isActiveAction(b)) events.push(activeEvent('p2', 'p1', b));
+      else if (b === 'ataque' || b === 'projetil') events.push({ kind: 'hit', winner: 'p2', loser: 'p1', action: b, beaten: '', dmg: calcDamage(p2, b, '') });
+      else events.push({ kind: 'none' });
     } else {
       events.push({ kind: 'none' });
     }
   }
   return events;
+}
+
+function activeEvent(winner, loser, act) {
+  if (act === 'raio') return { kind: 'zap', winner, loser };
+  if (act === 'incinerar') return { kind: 'burn', winner, loser };
+  if (act === 'tempo') return { kind: 'heal', winner, loser };
+  return { kind: 'none', winner, loser };
 }
 
 function resolveDuel(aKey, aAct, bKey, bAct) {
@@ -789,30 +991,39 @@ function resolveDuel(aKey, aAct, bKey, bAct) {
 
 /* ---------------- Dano e vantagens das bolas ---------------- */
 function calcDamage(attacker, action, beaten) {
-  const el = attacker.element;
   const base = BASE_DMG;
+  let dmg;
   if (action === 'ataque') {
-    if (el === 'pedra') return base * 2;
-    if (el === 'ar' && beaten === 'projetil') return base + 1;
-    return base;
+    if (attacker.element === 'pedra') dmg = base * 2;
+    else if (attacker.element === 'ar' && beaten === 'projetil') dmg = base + 1;
+    else dmg = base;
+  } else if (action === 'projetil') {
+    if (attacker.element === 'ar' && beaten === 'defesa') dmg = base + 2;
+    else dmg = base;
+  } else if (action === 'refletir') {
+    if (attacker.element === 'agua') dmg = base * 2;
+    else if (attacker.element === 'ar') dmg = base + 2;
+    else dmg = base;
+  } else {
+    dmg = base;
   }
-  if (action === 'projetil') {
-    if (el === 'fogo') return base + attacker.fireBonus;
-    if (el === 'ar' && beaten === 'defesa') return base + 2;
-    return base;
-  }
-  if (action === 'refletir') {
-    if (el === 'agua') return base * 2;
-    if (el === 'ar') return base + 2;
-    return base;
-  }
-  return base; // defesa contra ataque/refletir
+  if (attacker.element === 'raio' && attacker.overPowered) dmg *= 2;
+  if (attacker.element === 'tempo' && attacker.tempoWeakTurns > 0) dmg = Math.max(1, dmg - 1);
+  return dmg;
 }
 
 function applyDamage(player, dmg) {
   player.hp = Math.max(0, player.hp - dmg);
   refreshHUD();
   return player.hp;
+}
+
+function applyBlock(target) {
+  const usable = ACTION_ORDER.filter(a => target.counts[a] > 0);
+  const pool = usable.length ? usable : ACTION_ORDER.slice();
+  target.blockedAction = pick(pool);
+  target.blockTurns = 3;
+  target.blockTurn = game.turns;
 }
 
 /* ---------------- Playback dos eventos ---------------- */
@@ -833,6 +1044,45 @@ async function startResolve() {
 async function playEvent(ev) {
   if (ev.kind === 'none') {
     await delay(350);
+    return;
+  }
+  if (ev.kind === 'zap') {
+    const W = game.players[ev.winner], L = game.players[ev.loser];
+    sfx.zap();
+    lightningBolt(ev.winner, ev.loser, ELEMENTS[W.element].cor);
+    applyBlock(L);
+    log(`<span class="log-entry big">⚡ ${W.name} (Raio) eletrocuta <b>${L.name}</b>! Ação <b>${ACTIONS[L.blockedAction].nome}</b> bloqueada por 3 turnos e dano x2 permanente para ${W.name}!</span>`);
+    await delay(550);
+    return;
+  }
+  if (ev.kind === 'burn') {
+    const W = game.players[ev.winner], L = game.players[ev.loser];
+    const stored = W.fireBonus;
+    sfx.burn();
+    incinerateFx(ev.loser);
+    applyDamage(L, stored);
+    W.fireBonus = 0;
+    if (L.element === 'tempo' && stored > 0 && L.tempoStacks < TEMPO_STACK_CAP) {
+      L.tempoStacks = Math.min(TEMPO_STACK_CAP, L.tempoStacks + stored);
+    }
+    log(`<span class="log-entry big">🔥 ${W.name} (Fogo) lança <b>Incineração</b>: -${stored} de dano em ${L.name}. Stacks zerados.</span>`);
+    refreshHUD();
+    await delay(500);
+    return;
+  }
+  if (ev.kind === 'heal') {
+    const W = game.players[ev.winner];
+    const stacks = Math.min(TEMPO_STACK_CAP, W.tempoStacks);
+    const heal = stacks * TEMPO_HEAL_PER_STACK;
+    W.tempoStacks = 0;
+    W.tempoHealUsed = true;
+    sfx.heal();
+    W.hp = Math.min(W.maxHp, W.hp + heal);
+    W.tempoWeakTurns = 3;
+    W.tempoWeakTurn = game.turns;
+    log(`<span class="log-entry big">⏱ ${W.name} (Tempo) usa <b>Regenerar</b> (uso único): recupera +${heal} de vida. A energia do tempo se esgotou: dano -1 em todas as ações por 3 turnos.</span>`);
+    refreshHUD();
+    await delay(500);
     return;
   }
   const W = game.players[ev.winner];
@@ -867,10 +1117,17 @@ async function playEvent(ev) {
 
   applyDamage(L, dmg);
 
-  /* Fogo: +2 permanente em todo projétil que acerta */
+  /* Fogo: +2 de stack em todo projétil que acerta (dano fica guardado p/ Incineração) */
   if (act === 'projetil' && W.element === 'fogo') {
     W.fireBonus += 2;
-    log(`<span class="log-entry big">${W.name} (Fogo): projéteis agora causam ${BASE_DMG + W.fireBonus} de dano!</span>`);
+    log(`<span class="log-entry big">${W.name} (Fogo): +2 stacks! Incineração agora causa ${W.fireBonus} de dano.</span>`);
+    refreshHUD();
+  }
+
+  /* Tempo: ganha stacks (máx. 7) conforme recebe dano */
+  if (L.element === 'tempo' && dmg > 0 && L.tempoStacks < TEMPO_STACK_CAP) {
+    L.tempoStacks = Math.min(TEMPO_STACK_CAP, L.tempoStacks + dmg);
+    log(`<span class="log-entry big">${L.name} (Tempo): +${Math.min(dmg, TEMPO_STACK_CAP)} stacks! Regenerar agora cura ${L.tempoStacks} de vida.</span>`);
     refreshHUD();
   }
 
@@ -902,6 +1159,24 @@ function endRound() {
   p2.selection.actions.forEach(a => p2.lastActions.push(a));
   p1.lastActions = p1.lastActions.slice(-6);
   p2.lastActions = p2.lastActions.slice(-6);
+
+  /* decai o bloqueio do Raio inimigo (só a partir do turno seguinte ao eletrocuto) */
+  for (const k of ['p1', 'p2']) {
+    const p = game.players[k];
+    if (p.blockTurns > 0 && p.blockTurn !== game.turns) {
+      p.blockTurns--;
+      if (p.blockTurns <= 0) {
+        log(`<span class="log-entry">⚡ ${p.name}: ação <b>${ACTIONS[p.blockedAction].nome}</b> desbloqueada.</span>`);
+        p.blockedAction = null;
+      }
+    }
+    if (p.tempoWeakTurns > 0 && p.tempoWeakTurn !== game.turns) {
+      p.tempoWeakTurns--;
+      if (p.tempoWeakTurns <= 0) {
+        log(`<span class="log-entry">⏱ ${p.name}: o tempo voltou ao normal (dano recuperado).</span>`);
+      }
+    }
+  }
 
   if (p1.hp <= 0 || p2.hp <= 0) {
     game.state = 'over';
@@ -943,12 +1218,7 @@ function rematch() {
 }
 
 /* ---------------- Log ---------------- */
-function log(html) {
-  const box = $('log');
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  box.prepend(div);
-}
+function log() {}
 
 function bannerText(text, ms) {
   const b = $('banner');
@@ -965,6 +1235,7 @@ function animatePhaseLabel(text) {
 
 /* ---------------- Teclado ---------------- */
 window.addEventListener('keydown', ev => {
+  if (ev.repeat) return;
   ensureAudio();
   if (!game || game.state !== 'decision') return;
   const k = ev.code;
@@ -983,32 +1254,42 @@ window.addEventListener('keydown', ev => {
 });
 
 /* ---------------- Loops principais ---------------- */
+function refreshTimeHeads(r1, r2) {
+  const h1 = $('panel-1-head');
+  const h2 = $('panel-2-head');
+  const fmt = (label, s) => label ? `${label} · ${s}s` : label;
+  if (h1) h1.textContent = fmt('JOGADOR 1', r1 === null ? '--' : Math.max(0, Math.ceil(r1 / 1000)));
+  if (h2) h2.textContent = fmt('JOGADOR 2', r2 === null ? '--' : Math.max(0, Math.ceil(r2 / 1000)));
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
   if (game) {
     if (game.state === 'decision' && now) {
-      const remaining = game.phaseStart + game.phaseDuration - now;
-      const secs = Math.ceil(remaining / 1000);
+      const nowMs = now || performance.now();
+      const p1 = game.players.p1, p2 = game.players.p2;
+      const p1rem = p1.deadline - nowMs;
+      const p2rem = p2.deadline - nowMs;
+      const rem = Math.min(p1rem, p2rem);
+      const secs = Math.ceil(rem / 1000);
       const el = $('timer-label');
       el.textContent = secs;
-      el.classList.toggle('tight', remaining < 1000 || game.frenzy);
-      if (remaining <= 0) {
-        if (!game.players.p1.confirmed) lockPlayer('p1');
-        if (!game.players.p2.confirmed) {
-          if (game.players.p2.isAI) aiLock(game.players.p2);
-          else lockPlayer('p2');
-        }
-        startResolve();
-      } else {
-        const p1c = game.players.p1.confirmed, p2c = game.players.p2.confirmed;
-        if (p1c && p2c) {
-          if (game.mode === 'hotseat' || game.players.p2.isAI) startResolve();
-        }
+      el.classList.toggle('tight', rem < 1000 || game.frenzy);
+      refreshTimeHeads(p1rem, p2rem);
+      if (!p1.confirmed && p1rem <= 0) lockPlayer('p1');
+      if (!p2.confirmed && p2rem <= 0) {
+        if (p2.isAI) aiLock(p2);
+        else lockPlayer('p2');
+      }
+      const p1c = p1.confirmed, p2c = p2.confirmed;
+      if (p1c && p2c) {
+        if (game.mode === 'hotseat' || p2.isAI) startResolve();
       }
     } else if (game.state === 'resolve' || game.state === 'over') {
       const el = $('timer-label');
       el.textContent = '--';
       el.classList.remove('tight');
+      refreshTimeHeads(null, null);
     }
   }
   if (anim && ctx && canvas && screenBattle && !screenBattle.hidden) draw(now);
@@ -1059,6 +1340,30 @@ function impact(key, color) {
     anim.particles.push({
       x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
       life: 1, maxLife: 1, color, size: 2 + Math.random() * 4,
+    });
+  }
+}
+
+function lightningBolt(fromKey, toKey) {
+  anim.lightnings.push({ from: fromKey, to: toKey, life: 1.1 });
+  for (const k of [fromKey, toKey]) {
+    anim.rings.push({ x: ballMetrics(k).x, y: ballMetrics(k).y, r: ballMetrics(k).r * 0.6, vr: ballMetrics(k).r * 4, alpha: 0.8, color: '#ffe36b', width: 6 });
+  }
+}
+
+function incinerateFx(key) {
+  anim.shake[key] = 16;
+  const m = ballMetrics(key);
+  const x = m.x, y = m.y;
+  anim.rings.push({ x, y, r: m.r * 0.3, vr: m.r * 5, alpha: 0.95, color: '#ff6b35', width: 10 });
+  anim.rings.push({ x, y, r: m.r * 0.5, vr: m.r * 3.2, alpha: 0.7, color: '#ffd23f', width: 7 });
+  for (let i = 0; i < 26; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 60 + Math.random() * 220;
+    anim.particles.push({
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+      life: 1, maxLife: 1,
+      color: pick(['#ff6b35', '#ffd23f', '#ff8f3f', '#e63f1f']), size: 2 + Math.random() * 5,
     });
   }
 }
@@ -1116,6 +1421,22 @@ function draw(now) {
     if (el === 'agua' && Math.random() < 0.06) {
       anim.rings.push({ x: pos.x, y: pos.y + m.r * 0.7, r: m.r * 0.4, vr: m.r * 2.5, alpha: 0.4, color: '#7fd0ff', width: 3 });
     }
+    if (el === 'raio' && Math.random() < 0.18) {
+      anim.particles.push({
+        x: pos.x + (Math.random() - 0.5) * m.r * 0.9,
+        y: pos.y + (Math.random() - 0.5) * m.r * 0.9,
+        vx: (Math.random() - 0.5) * 70, vy: (Math.random() - 0.5) * 70,
+        life: 1, maxLife: 1, color: Math.random() < 0.5 ? '#ffe36b' : '#b06bff', size: 1.5 + Math.random() * 2.5,
+      });
+    }
+    if (el === 'tempo' && Math.random() < 0.2) {
+      anim.particles.push({
+        x: pos.x + (Math.random() - 0.5) * m.r * 0.9,
+        y: pos.y + (Math.random() - 0.5) * m.r * 0.9,
+        vx: (Math.random() - 0.5) * 30, vy: -20 - Math.random() * 40,
+        life: 1, maxLife: 1, color: Math.random() < 0.5 ? '#7ff3dc' : '#c9fff2', size: 1 + Math.random() * 2.5,
+      });
+    }
   }
 
   /* partículas */
@@ -1167,6 +1488,32 @@ function draw(now) {
     ctx.arc(pr.x, pr.y, 9, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
+  }
+
+  /* raios (eletrocuto) */
+  anim.lightnings = anim.lightnings.filter(l => l.life > 0);
+  for (const l of anim.lightnings) {
+    const a = ballPos(l.from, t);
+    const b = ballPos(l.to, t);
+    ctx.globalAlpha = clamp(l.life, 0, 1);
+    ctx.strokeStyle = '#ffe36b';
+    ctx.lineWidth = 3 + 2 * clamp(l.life, 0, 1);
+    ctx.shadowColor = '#ffd23f';
+    ctx.shadowBlur = 24;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    const segs = 9;
+    for (let s = 1; s < segs; s++) {
+      const p = s / segs;
+      const mx = a.x + (b.x - a.x) * p;
+      const my = a.y + (b.y - a.y) * p;
+      ctx.lineTo(mx + (Math.random() - 0.5) * 36, my + (Math.random() - 0.5) * 16 + Math.sin(p * 9) * 8);
+    }
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    l.life -= 0.035;
   }
 
   /* bolas */
@@ -1237,6 +1584,8 @@ function drawBall(c, p, pos, t, el) {
   if (el === 'fogo') { grad.addColorStop(0, '#ffe6a6'); grad.addColorStop(0.5, '#ff8f3f'); grad.addColorStop(1, '#b32700'); }
   else if (el === 'pedra') { grad.addColorStop(0, '#dfe3ea'); grad.addColorStop(0.55, '#9aa3b1'); grad.addColorStop(1, '#4a505c'); }
   else if (el === 'agua') { grad.addColorStop(0, '#b7e8ff'); grad.addColorStop(0.55, '#3fa9ff'); grad.addColorStop(1, '#0a3f6b'); }
+  else if (el === 'raio') { grad.addColorStop(0, '#ffef9e'); grad.addColorStop(0.5, '#b25cff'); grad.addColorStop(1, '#371a70'); }
+  else if (el === 'tempo') { grad.addColorStop(0, '#d9fff4'); grad.addColorStop(0.55, '#35e0c0'); grad.addColorStop(1, '#0b5148'); }
   else { grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.55, '#eef8ff'); grad.addColorStop(1, '#9db8cf'); }
 
   c.beginPath();
@@ -1246,7 +1595,7 @@ function drawBall(c, p, pos, t, el) {
   c.shadowBlur = 0;
 
   /* borda */
-  c.strokeStyle = el === 'ar' ? '#ffffff88' : '#ffffff44';
+  c.strokeStyle = (el === 'ar' || el === 'raio' || el === 'tempo') ? '#ffffff99' : '#ffffff44';
   c.lineWidth = 2;
   c.stroke();
 
@@ -1287,6 +1636,55 @@ function drawBall(c, p, pos, t, el) {
     c.arc(x + shakeX, y + shakeY, r * 1.35, 0, Math.PI * 2);
     c.stroke();
     c.setLineDash([]);
+  }
+if (el === 'tempo') {
+    c.strokeStyle = 'rgba(53,224,192,0.45)';
+    c.lineWidth = 2.5;
+    c.setLineDash([6, 10]);
+    c.lineDashOffset = -t * 0.03;
+    c.beginPath();
+    c.arc(x + shakeX, y + shakeY, r * 1.35, 0, Math.PI * 2);
+    c.stroke();
+    c.setLineDash([]);
+    const ang1 = t * 0.0006;
+    const ang2 = t * 0.0045;
+    c.strokeStyle = '#ffffffcc';
+    c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(x + shakeX, y + shakeY);
+    c.lineTo(x + shakeX + Math.cos(ang1) * r * 0.42, y + shakeY + Math.sin(ang1) * r * 0.42);
+    c.stroke();
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(x + shakeX, y + shakeY);
+    c.lineTo(x + shakeX + Math.cos(ang2) * r * 0.72, y + shakeY + Math.sin(ang2) * r * 0.72);
+    c.stroke();
+  }
+  if (el === 'raio') {
+    const charged = p.charged;
+    c.strokeStyle = charged ? '#ffd23f' : '#b06bff88';
+    c.lineWidth = 2.5;
+    c.setLineDash([7, 9]);
+    c.lineDashOffset = -t * 0.06;
+    c.shadowColor = charged ? '#ffd23f' : '#b06bff';
+    c.shadowBlur = charged ? 18 : 8;
+    c.beginPath();
+    c.arc(x + shakeX, y + shakeY, r * (charged ? 1.3 : 1.2), 0, Math.PI * 2);
+    c.stroke();
+    c.setLineDash([]);
+    c.shadowBlur = 0;
+    if (charged) {
+      c.fillStyle = '#ffd23f';
+      for (let k = 0; k < 3; k++) {
+        const a = Math.random() * Math.PI * 2;
+        const rr = r * (0.7 + Math.random() * 0.6);
+        const sx = x + shakeX + Math.cos(a) * rr;
+        const sy = y + shakeY + Math.sin(a) * rr;
+        c.beginPath();
+        c.arc(sx, sy, 2 + Math.random() * 3, 0, Math.PI * 2);
+        c.fill();
+      }
+    }
   }
 }
 
