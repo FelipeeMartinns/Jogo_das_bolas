@@ -103,6 +103,23 @@ html, body {
   margin-bottom: 22px;
 }
 
+/* ---------- ONLINE ---------- */
+.room-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 22px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 8px;
+  text-transform: uppercase;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid #ffffff33;
+  border-radius: 12px;
+  outline: none;
+}
+.room-input:focus { border-color: var(--accent-2); box-shadow: 0 0 14px #35a7ff44; }
+
 /* ---------- CONFIGURAÇÕES ---------- */
 .setting-row {
   display: flex;
@@ -334,6 +351,8 @@ html, body {
 }
 #panels:has(#panel-2.hidden-panel) { grid-template-columns: 1fr; }
 #panel-2.hidden-panel { display: none; }
+#panels:has(#panel-1.hidden-panel) { grid-template-columns: 1fr; }
+#panel-1.hidden-panel { display: none; }
 
 .panel {
   background: var(--panel);

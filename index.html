@@ -17,7 +17,7 @@
       <div class="menu-buttons">
         <button class="btn btn-primary" onclick="startSelect('hotseat')">2 Jogadores (Hot-seat)</button>
         <button class="btn btn-primary" onclick="startSelect('machine')">Vs Máquina</button>
-        <button class="btn btn-disabled" disabled title="Em breve">Online (em breve)</button>
+        <button class="btn btn-primary" onclick="startOnline()">Online</button>
       </div>
 
       <div class="menu-plain-row">
@@ -55,6 +55,32 @@
     <h2 id="select-title">Jogador 1 — escolha sua bola</h2>
     <div id="select-grid" class="select-grid"></div>
     <div id="select-note" class="select-note"></div>
+  </div>
+
+  <!-- ============ ONLINE ============ -->
+  <div id="screen-online" class="screen" hidden>
+    <div class="menu-box" style="max-width: 540px">
+      <h1 class="title" style="font-size: 36px; letter-spacing: 4px">MODO ONLINE</h1>
+      <p class="subtitle">Lute contra outro jogador pela internet.</p>
+
+      <div id="online-actions" class="menu-buttons">
+        <button class="btn btn-primary" onclick="createRoom()">Criar sala</button>
+        <button class="btn btn-secondary" onclick="joinRoomPrompt()">Entrar com código</button>
+      </div>
+
+      <div id="online-join" class="menu-buttons" hidden>
+        <input id="room-code-input" class="room-input" placeholder="CÓDIGO" maxlength="4" autocomplete="off" spellcheck="false">
+        <button class="btn btn-primary" onclick="joinRoom()">Conectar</button>
+      </div>
+
+      <div id="online-status" class="select-note" style="min-height: 40px"></div>
+      <p class="subtitle" style="font-size: 12px; margin-top: 6px">Dica: para testar no mesmo PC, use dois navegadores
+        diferentes (ex.: Chrome e Edge) ou uma janela anônima.</p>
+
+      <div class="menu-plain-row">
+        <button class="btn btn-plain" onclick="backToMenu()">Voltar</button>
+      </div>
+    </div>
   </div>
 
   <!-- ============ BATALHA ============ -->
@@ -136,6 +162,7 @@
     </div>
   </div>
 
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

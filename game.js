@@ -60,6 +60,27 @@ const ACTION_ORDER = ['ataque', 'defesa', 'projetil', 'refletir'];
 const ACTIVE_ACTIONS = ['raio', 'incinerar', 'tempo'];
 function isActiveAction(a) { return ACTIVE_ACTIONS.includes(a); }
 
+const ONLINE_PREFIX = 'jdb-';
+const ONLINE_CODE_LEN = 4;
+
+/* Servidores ICE: STUN público + TURN público como fallback para NAT restritivo */
+const ICE_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  { urls: ['stun:relay.metered.ca:80', 'stun:relay.metered.ca:443'] },
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+      'turn:relay.metered.ca:80',
+      'turn:relay.metered.ca:443',
+      'turn:relay.metered.ca:443?transport=tcp',
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+];
+
 /* ---------------- Estado geral ---------------- */
 let game = null;        // dados da partida atual
 let anim = null;        // estado de animação / desenho
@@ -68,6 +89,18 @@ let screenBattle = null;
 let audioCtx = null;
 let currentMode = 'hotseat';
 let currentScreen = 'menu';
+
+/* estado da partida online (PeerJS) */
+let online = {
+  peer: null, conn: null,
+  isHost: false, connected: false, started: false,
+  code: null,
+  hostPicked: null, guestElement: null,
+  guestReady: false, guestReadyTurn: -1, revealSent: false, revealTimer: null, guestActions: null,
+  pendingSync: null, lockTimer: null,
+  rematchSent: false, rematchReceived: false,
+  watchdog: null,
+};
 
 const $ = id => document.getElementById(id);
 
@@ -302,7 +335,7 @@ function weightedRandom(obj) {
 /* ---------------- Navegação de telas ---------------- */
 function showScreen(id) {
   currentScreen = id.replace('screen-', '');
-  ['screen-menu', 'screen-select', 'screen-battle'].forEach(s => {
+  ['screen-menu', 'screen-select', 'screen-online', 'screen-battle'].forEach(s => {
     $(s).hidden = s !== id;
   });
   Music.sync();
@@ -345,6 +378,12 @@ function updateSettingsUI() {
 }
 
 function backToMenu() {
+  if (online.peer || online.conn) {
+    sendOnline({ type: 'leave' });
+    closeOnline();
+  } else if (game && game.mode === 'online') {
+    closeOnline();
+  }
   game = null;
   $('gameover').hidden = true;
   document.body.classList.remove('frenzy');
@@ -360,6 +399,356 @@ function startSelect(mode) {
   showScreen('screen-select');
 }
 
+/* ---------------- Modo Online (PeerJS) ---------------- */
+function startOnline() {
+  if (quickPick('startOnline')) return;
+  ensureAudio();
+  sfx.click();
+  resetOnline();
+  $('online-actions').hidden = false;
+  $('online-join').hidden = true;
+  setOnlineStatus('');
+  showScreen('screen-online');
+}
+
+function setOnlineStatus(t) {
+  const el = $('online-status');
+  if (el) el.innerHTML = t || '';
+}
+
+function esc(t) {
+  return String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function checkPeerJs() {
+  if (typeof Peer === 'undefined') {
+    setOnlineStatus('A biblioteca PeerJS não carregou.<br>Verifique a internet e recarregue a página.');
+    return false;
+  }
+  return true;
+}
+
+function makeRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c = '';
+  for (let i = 0; i < ONLINE_CODE_LEN; i++) c += chars[rngInt(chars.length)];
+  return c;
+}
+
+function peerOptions() {
+  return { debug: 2, config: { iceServers: ICE_SERVERS } };
+}
+
+function scheduleConnWatchdog() {
+  if (online.watchdog) clearTimeout(online.watchdog);
+  online.watchdog = setTimeout(() => {
+    if (online.connected) return;
+    console.warn('[online] Sem conexão após 20s.');
+    setOnlineStatus('Demorando para conectar...<br>Confira: os dois estão com internet?<br>Se são 2 abas do MESMO navegador, abra em navegadores diferentes (ex.: Chrome + Edge).<br>Se for entre PCs, a rede precisa permitir conexões (NAT/firewall).');
+  }, 20000);
+}
+
+function createRoom() {
+  if (!checkPeerJs() || online.peer) return;
+  ensureAudio();
+  sfx.click();
+  online.isHost = true;
+  online.code = makeRoomCode();
+  $('online-actions').hidden = true;
+  $('online-join').hidden = true;
+  setOnlineStatus(`Sala criada! Código: <b style="color:var(--accent)">${online.code}</b><br>Aguardando oponente...`);
+  scheduleConnWatchdog();
+  try {
+    online.peer = new Peer(ONLINE_PREFIX + online.code, peerOptions());
+  } catch (e) {
+    console.error('[online] erro ao criar Peer', e);
+    setOnlineStatus('Erro ao criar a sala. Tente novamente.');
+    return;
+  }
+  online.peer.on('open', () => {
+    console.log('[online] peer do anfitrião aberto:', online.code);
+    setOnlineStatus(`Sala criada! Código: <b style="color:var(--accent)">${online.code}</b><br>Envie o código para seu amigo e aguarde...`);
+  });
+  online.peer.on('connection', setupOnlineConn);
+  online.peer.on('error', err => {
+    console.error('[online] erro no peer (anfitrião):', err && err.type, err);
+    if (online.connected) return;
+    if (err && err.type === 'unavailable-id') {
+      closeOnline();
+      setOnlineStatus('Falha ao criar a sala (ID em uso). Tente novamente.');
+    } else if (!online.connected) {
+      setOnlineStatus('Falha de conexão com o servidor de sinal. Verifique a internet e tente de novo.');
+    }
+  });
+}
+
+function joinRoomPrompt() {
+  if (!checkPeerJs()) return;
+  ensureAudio();
+  sfx.click();
+  $('online-actions').hidden = true;
+  $('online-join').hidden = false;
+  setOnlineStatus('');
+  $('room-code-input').focus();
+}
+
+function joinRoom() {
+  if (!checkPeerJs() || online.peer) return;
+  const code = ($('room-code-input').value || '').trim().toUpperCase();
+  if (!code) { setOnlineStatus('Digite o código da sala.'); return; }
+  ensureAudio();
+  sfx.click();
+  online.isHost = false;
+  online.code = code;
+  $('online-join').hidden = true;
+  setOnlineStatus(`Conectando à sala <b>${esc(code)}</b>...`);
+  scheduleConnWatchdog();
+  try {
+    online.peer = new Peer(peerOptions());
+    online.peer.on('open', () => {
+      console.log('[online] peer do convidado aberto, conectando em', ONLINE_PREFIX + code);
+      online.conn = online.peer.connect(ONLINE_PREFIX + code, { reliable: true });
+      setupOnlineConn(online.conn);
+    });
+    online.peer.on('error', err => {
+      console.error('[online] erro no peer (convidado):', err && err.type, err);
+      if (online.connected) return;
+      if (err) {
+        closeOnline();
+        setOnlineStatus(`Não encontrou a sala (${esc(code)}). Confira o código e tente de novo.`);
+        $('online-actions').hidden = false;
+      }
+    });
+  } catch (e) {
+    console.error('[online] erro ao criar Peer (convidado)', e);
+    setOnlineStatus('Erro ao conectar. Tente novamente.');
+  }
+}
+
+function setupOnlineConn(conn) {
+  conn.on('open', () => {
+    console.log('[online] canal de dados aberto');
+    online.connected = true;
+    online.conn = conn;
+    if (online.watchdog) clearTimeout(online.watchdog);
+    if (online.revealTimer) clearTimeout(online.revealTimer);
+    sendOnline({ type: online.isHost ? 'guest-ready' : 'host-ready' });
+  });
+  conn.on('data', onOnlineData);
+  conn.on('close', onOnlineLeave);
+  conn.on('error', err => {
+    console.error('[online] erro no canal:', err && err.type, err);
+    if (online.connected) onOnlineLeave();
+    else if (!online.isHost) setOnlineStatus('Não foi possível conectar. Confira o código e tente de novo.');
+  });
+}
+
+function sendOnline(msg) {
+  try {
+    if (online.connected && online.conn && online.conn.open) online.conn.send(msg);
+  } catch (e) { /* ignore */ }
+}
+
+function closeOnline() {
+  if (online.revealTimer) clearTimeout(online.revealTimer);
+  if (online.watchdog) clearTimeout(online.watchdog);
+  if (online.lockTimer) clearTimeout(online.lockTimer);
+  try { if (online.conn) online.conn.close(); } catch (e) {}
+  try { if (online.peer) online.peer.destroy(); } catch (e) {}
+  online.conn = null;
+  online.peer = null;
+  online.watchdog = null;
+  online.revealTimer = null;
+  online.lockTimer = null;
+  online.connected = false;
+}
+
+function resetOnline() {
+  closeOnline();
+  online.isHost = false;
+  online.connected = false;
+  online.started = false;
+  online.code = null;
+  online.hostPicked = null;
+  online.guestElement = null;
+  online.guestReady = false;
+  online.guestReadyTurn = -1;
+  online.revealSent = false;
+  online.revealTimer = null;
+  online.guestActions = null;
+  online.pendingSync = null;
+  online.rematchSent = false;
+  online.rematchReceived = false;
+}
+
+function onOnlineLeave() {
+  const inBattle = !!(game && game.mode === 'online');
+  if (inBattle) alert('O oponente desconectou. A partida foi encerrada.');
+  else if (online.connected) alert('Conexão encerrada.');
+  closeOnline();
+  game = null;
+  document.body.classList.remove('frenzy');
+  $('gameover').hidden = true;
+  showScreen('screen-menu');
+}
+
+function onOnlineData(raw) {
+  let msg = raw;
+  try { if (typeof raw === 'string') msg = JSON.parse(raw); } catch (e) { return; }
+  if (!msg || typeof msg.type !== 'string') return;
+  switch (msg.type) {
+    case 'host-ready':
+      if (online.isHost) goOnlineSelect();
+      break;
+    case 'guest-ready':
+      if (!online.isHost) goOnlineSelect();
+      break;
+    case 'select':
+      if (online.isHost && !online.started) {
+        online.guestElement = msg.element;
+        if (online.hostPicked) startOnlineBattle(online.hostPicked, msg.element);
+      }
+      break;
+    case 'start':
+      if (!online.isHost && !online.started) {
+        online.started = true;
+        startBattle(msg.e1, msg.e2);
+      }
+      break;
+    case 'ready':
+      if (online.isHost) {
+        online.guestReady = true;
+        online.guestReadyTurn = game ? game.turns : -1;
+        maybeRequestActions();
+      }
+      break;
+    case 'actions-request':
+      if (!online.isHost && game && game.mode === 'online' && game.state === 'decision') {
+        const me = game.players[game.myKey];
+        sendOnline({ type: 'actions', combo: me.selection.combo, actions: me.selection.actions.slice() });
+      }
+      break;
+    case 'actions':
+      if (online.isHost && game && game.mode === 'online') {
+        clearTimeout(online.revealTimer);
+        if (game.state === 'decision') {
+          game.players.p2.selection = { combo: !!msg.combo, actions: Array.isArray(msg.actions) ? msg.actions : [] };
+          lockPlayer('p2');
+          startResolve();
+        }
+      }
+      break;
+    case 'round':
+      if (!online.isHost && game && game.mode === 'online' && game.state === 'decision') {
+        startOnlineResolve(Array.isArray(msg.events) ? msg.events : []);
+      }
+      break;
+    case 'sync':
+      if (!online.isHost && game && game.mode === 'online') {
+        if (game.state === 'resolve') online.pendingSync = msg.sync;
+        else applyOnlineSync(msg.sync);
+      }
+      break;
+    case 'rematch':
+      online.rematchReceived = true;
+      if (online.rematchSent) {
+        $('gameover').hidden = true;
+        goOnlineSelect();
+      } else {
+        $('result-sub').textContent = 'Oponente quer uma revanche! Clique em Revanche para aceitar.';
+      }
+      break;
+    case 'leave':
+      onOnlineLeave();
+      break;
+  }
+}
+
+function goOnlineSelect() {
+  online.connected = true;
+  online.started = false;
+  online.hostPicked = null;
+  online.guestElement = null;
+  online.guestReady = false;
+  online.guestReadyTurn = -1;
+  online.revealSent = false;
+  online.revealTimer = null;
+  online.guestActions = null;
+  online.pendingSync = null;
+  online.rematchSent = false;
+  online.rematchReceived = false;
+  game = null;
+  currentMode = 'online';
+  buildSelect(online.isHost ? 'p1' : 'p2');
+  showScreen('screen-select');
+}
+
+function startOnlineBattle(e1, e2) {
+  online.started = true;
+  sendOnline({ type: 'start', e1, e2 });
+  startBattle(e1, e2);
+}
+
+function maybeRequestActions() {
+  if (!online.isHost || !game || game.mode !== 'online' || game.state !== 'decision') return;
+  if (online.revealSent || !online.guestReady || !game.players.p1.confirmed) return;
+  online.revealSent = true;
+  sendOnline({ type: 'actions-request' });
+  online.revealTimer = setTimeout(() => {
+    if (online.isHost && game && game.mode === 'online' && game.state === 'decision' && !online.guestActions) {
+      game.players.p2.selection = { combo: false, actions: [] };
+      startResolve();
+    }
+  }, 6000);
+}
+
+function onlineSnapshot() {
+  const pl = k => {
+    const p = game.players[k];
+    return {
+      hp: p.hp,
+      counts: Object.assign({}, p.counts),
+      combos: p.combos,
+      fireBonus: p.fireBonus,
+      charged: p.charged,
+      chargedUsed: p.chargedUsed,
+      overPowered: p.overPowered,
+      blockedAction: p.blockedAction,
+      blockTurns: p.blockTurns,
+      tempoStacks: p.tempoStacks,
+      tempoHealUsed: p.tempoHealUsed,
+      tempoWeakTurns: p.tempoWeakTurns,
+    };
+  };
+  return { p1: pl('p1'), p2: pl('p2'), frenzy: game.frenzy, turns: game.turns };
+}
+
+function applyOnlineSync(sync) {
+  if (!game || !sync) return;
+  game.frenzy = !!sync.frenzy;
+  game.turns = sync.turns;
+  for (const k of ['p1', 'p2']) {
+    const s = sync[k], p = game.players[k];
+    if (!s || !p) continue;
+    p.hp = s.hp;
+    p.counts = Object.assign({}, s.counts);
+    p.combos = s.combos;
+    p.fireBonus = s.fireBonus;
+    p.charged = s.charged;
+    p.chargedUsed = s.chargedUsed;
+    p.overPowered = s.overPowered;
+    p.blockedAction = s.blockedAction;
+    p.blockTurns = s.blockTurns;
+    p.tempoStacks = s.tempoStacks;
+    p.tempoHealUsed = s.tempoHealUsed;
+    p.tempoWeakTurns = s.tempoWeakTurns;
+  }
+  document.body.classList.toggle('frenzy', !!game.frenzy);
+  refreshPanel('p1');
+  refreshPanel('p2');
+  refreshHUD();
+}
+
 /* ---------------- Seleção de personagens ---------------- */
 let selectState = null;
 
@@ -370,9 +759,10 @@ function buildSelect(playerKey) {
   grid.innerHTML = '';
   note.textContent = '';
 
-  const label = playerKey === 'p1'
-    ? (currentMode === 'machine' ? 'Você' : 'Jogador 1')
-    : 'Jogador 2';
+  let label;
+  if (currentMode === 'online') label = 'Você';
+  else if (playerKey === 'p1') label = currentMode === 'machine' ? 'Você' : 'Jogador 1';
+  else label = 'Jogador 2';
   title.textContent = `${label} — escolha sua bola`;
 
   selectState = { playerKey, chosen: null };
@@ -399,6 +789,17 @@ function buildSelect(playerKey) {
 
 function finishSelect(element, playerKey) {
   if (quickPick('finishSelect:' + playerKey)) return;
+  if (currentMode === 'online') {
+    sendOnline({ type: 'select', element });
+    if (online.isHost) {
+      online.hostPicked = element;
+      if (online.guestElement) startOnlineBattle(element, online.guestElement);
+      else $('select-note').textContent = 'Escolha enviada! Aguardando o oponente...';
+    } else {
+      $('select-note').textContent = 'Escolha enviada! Aguardando o anfitrião...';
+    }
+    return;
+  }
   if (playerKey === 'p1') {
     selectStateP1 = element;
     if (currentMode === 'machine') {
@@ -453,11 +854,14 @@ function startBattle(elementP1, elementP2) {
   document.body.classList.remove('frenzy');
 
   const isMachine = currentMode === 'machine';
-  const p1 = makePlayer('p1', elementP1, false, isMachine ? 'Você' : 'Jogador 1');
-  const p2 = makePlayer('p2', elementP2, isMachine, isMachine ? 'Máquina' : 'Jogador 2');
+  const isOnline = currentMode === 'online';
+  const myKey = isOnline ? (online.isHost ? 'p1' : 'p2') : 'p1';
+  const p1 = makePlayer('p1', elementP1, false, isMachine ? 'Você' : isOnline ? (myKey === 'p1' ? 'Você' : 'Oponente') : 'Jogador 1');
+  const p2 = makePlayer('p2', elementP2, isMachine, isMachine ? 'Máquina' : isOnline ? (myKey === 'p2' ? 'Você' : 'Oponente') : 'Jogador 2');
 
   game = {
-    mode: isMachine ? 'machine' : 'hotseat',
+    mode: isMachine ? 'machine' : isOnline ? 'online' : 'hotseat',
+    myKey: isOnline ? myKey : null,
     players: { p1, p2 },
     state: 'decision',
     frenzy: false,
@@ -478,9 +882,21 @@ function startBattle(elementP1, elementP2) {
   $('banner').hidden = true;
   $('gameover').hidden = true;
 
-  if (isMachine) $('panel-2').classList.add('hidden-panel');
-  else $('panel-2').classList.remove('hidden-panel');
-  $('panel-2-head').textContent = isMachine ? 'MÁQUINA' : 'JOGADOR 2';
+  if (isOnline) {
+    const opp = myKey === 'p1' ? '2' : '1';
+    $('panel-' + opp).classList.add('hidden-panel');
+    $('panel-' + (myKey === 'p1' ? '1' : '2')).classList.remove('hidden-panel');
+    setPanelHead(1, myKey === 'p1' ? 'VOCÊ' : 'OPONENTE');
+    setPanelHead(2, myKey === 'p2' ? 'VOCÊ' : 'OPONENTE');
+  } else if (isMachine) {
+    $('panel-2').classList.add('hidden-panel');
+    setPanelHead(1, 'JOGADOR 1');
+    setPanelHead(2, 'MÁQUINA');
+  } else {
+    $('panel-2').classList.remove('hidden-panel');
+    setPanelHead(1, 'JOGADOR 1');
+    setPanelHead(2, 'JOGADOR 2');
+  }
 
   refreshHUD();
   startDecision();
@@ -768,6 +1184,19 @@ function confirmPlayer(playerKey) {
   lockPlayer(playerKey);
   sfx.confirm();
   refreshHUD();
+  if (game.mode === 'online') {
+    sendOnline({ type: 'ready' });
+    if (online.isHost) maybeRequestActions();
+  }
+}
+
+function autoLock(playerKey) {
+  lockPlayer(playerKey);
+  refreshHUD();
+  if (game.mode === 'online') {
+    sendOnline({ type: 'ready' });
+    if (online.isHost) maybeRequestActions();
+  }
 }
 
 function lockPlayer(playerKey) {
@@ -797,6 +1226,13 @@ function decisionTimeFor(p) {
 /* ---------------- Turno de decisão ---------------- */
 function startDecision() {
   const p1 = game.players.p1, p2 = game.players.p2;
+
+  if (game.mode === 'online' && online.pendingSync) {
+    const s = online.pendingSync;
+    online.pendingSync = null;
+    applyOnlineSync(s);
+  }
+
   game.state = 'decision';
   game.phaseStart = performance.now();
   p1.deadline = game.phaseStart + decisionTimeFor(p1);
@@ -818,6 +1254,14 @@ function startDecision() {
   refreshHUD();
   updateCharge();
 
+  if (game.mode === 'online') {
+    if (online.guestReadyTurn !== game.turns) online.guestReady = false;
+    online.revealSent = false;
+    online.guestActions = null;
+    if (online.revealTimer) clearTimeout(online.revealTimer);
+    online.revealTimer = null;
+  }
+
   if (game.mode === 'machine') {
     const think = 700 + Math.random() * 900;
     setTimeout(() => {
@@ -825,6 +1269,16 @@ function startDecision() {
         aiLock(game.players.p2);
       }
     }, think);
+  } else if (game.mode === 'online') {
+    /* rAF é pausado com a aba em segundo plano; garante o auto-lock próprio */
+    if (online.lockTimer) clearTimeout(online.lockTimer);
+    const own = game.players[game.myKey];
+    online.lockTimer = setTimeout(() => {
+      online.lockTimer = null;
+      if (game && game.mode === 'online' && game.state === 'decision' && !game.players[game.myKey].confirmed) {
+        autoLock(game.myKey);
+      }
+    }, Math.max(0, own.deadline - performance.now()) + 60);
   }
 }
 
@@ -1023,10 +1477,10 @@ function applyDamage(player, dmg) {
   return player.hp;
 }
 
-function applyBlock(target) {
+function applyBlock(target, forced) {
   const usable = ACTION_ORDER.filter(a => target.counts[a] > 0);
   const pool = usable.length ? usable : ACTION_ORDER.slice();
-  target.blockedAction = pick(pool);
+  target.blockedAction = forced || pick(pool);
   target.blockTurns = 3;
   target.blockTurn = game.turns;
 }
@@ -1038,12 +1492,36 @@ async function startResolve() {
   game.turns++;
   animatePhaseLabel('Resolvendo...');
   const events = planRound();
+  await resolveRound(events);
+}
 
+async function startOnlineResolve(events) {
+  if (!game || game.mode !== 'online' || game.state !== 'decision') return;
+  game.state = 'resolve';
+  game.turns++;
+  animatePhaseLabel('Resolvendo...');
+  await resolveRound(events);
+}
+
+async function resolveRound(events) {
+  if (game.mode === 'online' && online.isHost) {
+    /* o anfitrião decide os efeitos aleatórios e repassa para o convidado */
+    for (const ev of events) {
+      if (ev && ev.kind === 'zap') {
+        applyBlock(game.players[ev.loser]);
+        ev.block = game.players[ev.loser].blockedAction;
+      }
+    }
+    sendOnline({ type: 'round', events });
+  }
   for (const ev of events) {
     if (game.state === 'over') return;
     await playEvent(ev);
   }
   endRound();
+  if (game.mode === 'online' && online.isHost) {
+    sendOnline({ type: 'sync', sync: onlineSnapshot() });
+  }
 }
 
 async function playEvent(ev) {
@@ -1074,7 +1552,7 @@ async function playEvent(ev) {
     const W = game.players[ev.winner], L = game.players[ev.loser];
     sfx.zap();
     lightningBolt(ev.winner, ev.loser, ELEMENTS[W.element].cor);
-    applyBlock(L);
+    applyBlock(L, ev.block);
     log(`<span class="log-entry big">⚡ ${W.name} (Raio) eletrocuta <b>${L.name}</b>! Ação <b>${ACTIONS[L.blockedAction].nome}</b> bloqueada por 3 turnos e dano x2 permanente para ${W.name}!</span>`);
     await delay(550);
     return;
@@ -1235,8 +1713,22 @@ function finishMatch() {
 }
 
 function rematch() {
-  $('gameover').hidden = true;
   const mode = game ? game.mode : currentMode;
+  if (mode === 'online') {
+    if (online.rematchSent) return;
+    online.rematchSent = true;
+    sendOnline({ type: 'rematch' });
+    game = null;
+    if (online.rematchReceived) {
+      $('gameover').hidden = true;
+      goOnlineSelect();
+    } else {
+      $('result-title').textContent = 'Aguardando o oponente...';
+      $('result-sub').textContent = 'Você pediu a revanche. Aguarde o oponente aceitar.';
+    }
+    return;
+  }
+  $('gameover').hidden = true;
   game = null;
   startSelect(mode);
 }
@@ -1267,6 +1759,7 @@ window.addEventListener('keydown', ev => {
   for (const pk of ['p1', 'p2']) {
     const player = game.players[pk];
     if (player.isAI) continue;
+    if (game.mode === 'online' && pk !== game.myKey) continue;
     const map = KEYS[pk];
     if (k === map.ataque) { ev.preventDefault(); onPickAction(pk, 'ataque'); }
     else if (k === map.defesa) { ev.preventDefault(); onPickAction(pk, 'defesa'); }
@@ -1278,12 +1771,19 @@ window.addEventListener('keydown', ev => {
 });
 
 /* ---------------- Loops principais ---------------- */
+const panelHeads = { 1: 'JOGADOR 1', 2: 'JOGADOR 2' };
+function setPanelHead(n, label) {
+  panelHeads[n] = label;
+  const el = $('panel-' + n + '-head');
+  if (el) el.textContent = label;
+}
+
 function refreshTimeHeads(r1, r2) {
   const h1 = $('panel-1-head');
   const h2 = $('panel-2-head');
-  const fmt = (label, s) => label ? `${label} · ${s}s` : label;
-  if (h1) h1.textContent = fmt('JOGADOR 1', r1 === null ? '--' : Math.max(0, Math.ceil(r1 / 1000)));
-  if (h2) h2.textContent = fmt('JOGADOR 2', r2 === null ? '--' : Math.max(0, Math.ceil(r2 / 1000)));
+  const fmt = (label, s) => s === null ? label : `${label} · ${s}s`;
+  if (h1) h1.textContent = fmt(panelHeads[1], r1 === null ? null : Math.max(0, Math.ceil(r1 / 1000)));
+  if (h2) h2.textContent = fmt(panelHeads[2], r2 === null ? null : Math.max(0, Math.ceil(r2 / 1000)));
 }
 
 function frame(now) {
@@ -1294,20 +1794,25 @@ function frame(now) {
       const p1 = game.players.p1, p2 = game.players.p2;
       const p1rem = p1.deadline - nowMs;
       const p2rem = p2.deadline - nowMs;
-      const rem = Math.min(p1rem, p2rem);
-      const secs = Math.ceil(rem / 1000);
+      const rem = game.mode === 'online' ? game.players[game.myKey].deadline - nowMs : Math.min(p1rem, p2rem);
+      const secs = Math.max(0, Math.ceil(rem / 1000));
       const el = $('timer-label');
       el.textContent = secs;
       el.classList.toggle('tight', rem < 1000 || game.frenzy);
       refreshTimeHeads(p1rem, p2rem);
-      if (!p1.confirmed && p1rem <= 0) lockPlayer('p1');
-      if (!p2.confirmed && p2rem <= 0) {
-        if (p2.isAI) aiLock(p2);
-        else lockPlayer('p2');
-      }
-      const p1c = p1.confirmed, p2c = p2.confirmed;
-      if (p1c && p2c) {
-        if (game.mode === 'hotseat' || p2.isAI) startResolve();
+      if (game.mode === 'online') {
+        const me = game.players[game.myKey];
+        if (!me.confirmed && me.deadline <= nowMs) autoLock(game.myKey);
+      } else {
+        if (!p1.confirmed && p1rem <= 0) autoLock('p1');
+        if (!p2.confirmed && p2rem <= 0) {
+          if (p2.isAI) aiLock(p2);
+          else autoLock('p2');
+        }
+        const p1c = p1.confirmed, p2c = p2.confirmed;
+        if (p1c && p2c) {
+          if (game.mode === 'hotseat' || p2.isAI) startResolve();
+        }
       }
     } else if (game.state === 'resolve' || game.state === 'over') {
       const el = $('timer-label');
