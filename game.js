@@ -927,8 +927,12 @@ function planRound() {
         const r = resolveDuel('p1', a, 'p2', b);
         if (r.none) events.push({ kind: 'none' });
         else if (r.clash) {
-          events.push({ kind: 'hit', winner: 'p1', loser: 'p2', action: 'ataque', beaten: 'ataque', dmg: calcDamage(p1, 'ataque', 'ataque'), clash: true });
-          events.push({ kind: 'hit', winner: 'p2', loser: 'p1', action: 'ataque', beaten: 'ataque', dmg: calcDamage(p2, 'ataque', 'ataque'), clash: true });
+          if (r.projClash) {
+            events.push({ kind: 'projClash' });
+          } else {
+            events.push({ kind: 'hit', winner: 'p1', loser: 'p2', action: 'ataque', beaten: 'ataque', dmg: calcDamage(p1, 'ataque', 'ataque'), clash: true });
+            events.push({ kind: 'hit', winner: 'p2', loser: 'p1', action: 'ataque', beaten: 'ataque', dmg: calcDamage(p2, 'ataque', 'ataque'), clash: true });
+          }
         } else {
           const W = r.winner === 'p1' ? p1 : p2;
           const act = r.winnerAct, beat = r.winnerBeaten;
@@ -965,6 +969,7 @@ function activeEvent(winner, loser, act) {
 function resolveDuel(aKey, aAct, bKey, bAct) {
   if (aAct === bAct) {
     if (aAct === 'ataque') return { clash: true };
+    if (aAct === 'projetil') return { clash: true, projClash: true };
     return { none: true };
   }
   let winner = null;         // 'a' | 'b'
@@ -1044,6 +1049,25 @@ async function startResolve() {
 async function playEvent(ev) {
   if (ev.kind === 'none') {
     await delay(350);
+    return;
+  }
+  if (ev.kind === 'projClash') {
+    const m1 = ballMetrics('p1');
+    const m2 = ballMetrics('p2');
+    const mx = (m1.x + m2.x) / 2;
+    const my = (m1.y + m2.y) / 2 - m1.r * 0.5;
+    sfx.whoosh();
+    await Promise.all([
+      flyProjectile('p1', mx, my, ELEMENTS[game.players.p1.element].cor),
+      flyProjectile('p2', mx, my, ELEMENTS[game.players.p2.element].cor),
+    ]);
+    sfx.hit();
+    anim.shake.p1 = 10;
+    anim.shake.p2 = 10;
+    impactAt(mx, my, '#ffd23f', m1.r);
+    impactAt(mx, my, '#ffffff', m1.r * 0.6);
+    log(`<span class="log-entry big">💥 Projéteis colidiram no ar! ${game.players.p1.name} e ${game.players.p2.name} se desequilibram, ninguém se fere.</span>`);
+    await delay(450);
     return;
   }
   if (ev.kind === 'zap') {
@@ -1332,8 +1356,12 @@ function shieldFlash(key, element) {
 function impact(key, color) {
   anim.shake[key] = 14;
   const m = ballMetrics(key);
-  const x = m.x, y = m.y;
-  anim.rings.push({ x, y, r: m.r * 0.4, vr: m.r * 5.5, alpha: 0.9, color, width: 8 });
+  impactAt(m.x, m.y, color, m.r);
+}
+
+function impactAt(x, y, color, r) {
+  r = r || 30;
+  anim.rings.push({ x, y, r: r * 0.4, vr: r * 5.5, alpha: 0.9, color, width: 8 });
   for (let i = 0; i < 16; i++) {
     const a = Math.random() * Math.PI * 2;
     const sp = 40 + Math.random() * 160;
@@ -1368,18 +1396,15 @@ function incinerateFx(key) {
   }
 }
 
-async function shootProjectile(fromKey, toKey, color, reflected) {
-  const f = ballMetrics(fromKey), t = ballMetrics(toKey);
-  const rnd = { x: 0, y: 0, color, trail: [], trailOffset: 0 };
-  rnd.x = f.x;
-  rnd.y = f.y;
+async function flyProjectile(fromKey, x, y, color, speed) {
+  const f = ballMetrics(fromKey);
+  const rnd = { x: f.x, y: f.y, color, trail: [], trailOffset: 0 };
   anim.projectiles.push(rnd);
-  const dist = Math.hypot(t.x - f.x, t.y - f.y);
+  const dist = Math.hypot(x - f.x, y - f.y);
   const dur = clamp(dist / 1000, 0.32, 0.6) * 1000;
-  const SPEED = reflected ? 1.5 : 1;
-  await tween(dur / SPEED, p => {
-    const tx = f.x + (t.x - f.x) * p;
-    const ty = f.y + (t.y - f.y) * p;
+  await tween(dur / (speed || 1), p => {
+    const tx = f.x + (x - f.x) * p;
+    const ty = f.y + (y - f.y) * p;
     rnd.x = tx;
     rnd.y = ty;
     rnd.trail.push({ x: tx, y: ty, life: 1 });
@@ -1388,6 +1413,11 @@ async function shootProjectile(fromKey, toKey, color, reflected) {
   rnd.trail.forEach(tr => (tr.life = 0));
   const idx = anim.projectiles.indexOf(rnd);
   if (idx >= 0) anim.projectiles.splice(idx, 1);
+}
+
+async function shootProjectile(fromKey, toKey, color, reflected) {
+  const t = ballMetrics(toKey);
+  await flyProjectile(fromKey, t.x, t.y, color, reflected ? 1.5 : 1);
   impact(toKey, color);
 }
 
