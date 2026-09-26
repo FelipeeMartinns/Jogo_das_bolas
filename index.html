@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Bolistic</title>
-  <link rel="stylesheet" href="style.css?v=13">
+  <link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
@@ -21,6 +21,7 @@
       </div>
 
       <div class="menu-plain-row">
+        <button class="btn btn-plain" onclick="abrirReplays()">Replays</button>
         <button class="btn btn-plain" onclick="toggleRules()">Como jogar</button>
         <button class="btn btn-plain" onclick="openSettings()">Configurações</button>
       </div>
@@ -50,6 +51,19 @@
           <li><b>Raio:</b> ao chegar à metade da vida, energiza. Usar a habilidade ativa (botão <b>Raio</b> no turno) causa <b>2 de dano</b>, bloqueia 1 ação aleatória dele por <b>3 turnos</b> — além disso, o Raio ganha <b>dano dobrado permanente</b> pelo resto da partida (uso único).</li>
           <li><b>Tempo:</b> reduz em <b>1 segundo</b> apenas o tempo do inimigo (vale mesmo no modo Vs Máquina, se a máquina for o Tempo). Ganha <b>1 stack</b> por ponto de dano sofrido (máx. 7); a habilidade ativa <b>Regenerar</b> (botão no turno, <b>uso único</b>) recupera <b>1 de vida por stack</b> e, após usar, o Tempo <b>perde 1 de dano em todas as ações por 3 turnos</b>.</li>
         </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ REPLAYS ============ -->
+  <div id="screen-replays" class="screen" hidden>
+    <div class="menu-box replay-box">
+      <h1 class="title">REPLAYS</h1>
+      <p class="replay-aviso" id="replay-aviso">As partidas ficam guardadas <b>só neste navegador</b>. Limpar os dados do navegador apaga os replays.</p>
+      <div id="replay-list"></div>
+      <div class="menu-buttons">
+        <button class="btn btn-secondary" onclick="voltarDosReplays()">Voltar</button>
+        <button class="btn btn-plain" id="btn-apagar-replays" onclick="apagarTodosReplays()">Apagar todos</button>
       </div>
     </div>
   </div>
@@ -126,6 +140,7 @@
       <div class="hud-center">
         <div id="timer-label">5</div>
         <div id="phase-label">Escolham suas ações!</div>
+        <button class="hud-exit" id="btn-exit-battle" onclick="confirmExitBattle()" title="Abandonar a partida e voltar ao menu">Sair da partida</button>
       </div>
       <div class="hud-right">
         <div class="hud-name" id="p2-hud-name">-</div>
@@ -136,6 +151,11 @@
 
     <div id="arena-row">
       <canvas id="arena" width="820" height="420"></canvas>
+      <div id="replay-bar" hidden>
+        <span class="replay-tag">REPLAY</span>
+        <button class="btn btn-plain" id="replay-pular" onclick="pularReplay()">Pular</button>
+        <button class="btn btn-plain" id="replay-sair" onclick="sairReplay()">Sair</button>
+      </div>
       <div id="banner" hidden></div>
 
       <div id="coach" class="coach" hidden>
@@ -177,6 +197,7 @@
       <p id="result-sub"></p>
       <button class="btn btn-primary" onclick="backToMenu()">Voltar ao menu</button>
       <button class="btn btn-secondary" onclick="rematch()">Revanche</button>
+      <button class="btn btn-secondary" id="btn-ver-replay" onclick="verUltimoReplay()" hidden>Ver replay</button>
     </div>
   </div>
 
@@ -210,6 +231,20 @@
   </div>
 
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="game.js?v=13"></script>
+
+  <!-- Os scripts sao arquivos comuns (nao modulos), entao todos dividem o mesmo
+       escopo global. A ordem abaixo so importa para o que roda na hora da
+       leitura: o resto se referencia por funcao, que so e chamada depois.
+       O arena.js vem por ultimo porque e ele que inicia o loop de desenho. -->
+  <script src="dados.js?v=16"></script>
+  <script src="jogo.js?v=16"></script>
+<script src="replay.js?v=16"></script>
+  <script src="audio.js?v=16"></script>
+  <script src="telas.js?v=16"></script>
+  <script src="controles.js?v=16"></script>
+  <script src="regras.js?v=16"></script>
+  <script src="online.js?v=16"></script>
+  <script src="tutorial.js?v=16"></script>
+  <script src="arena.js?v=16"></script>
 </body>
 </html>

@@ -54,7 +54,7 @@ A escolha da jogada é feita por teclado ou clique nos botões do painel.
 - **Projétil** vence a Defesa com o **dano normal**, sem nenhuma redução, e também vence o Agarrar. **Ataque** vence o Projétil por ser mais rápido.
 - Espelhos: **Ataque × Ataque** e **Agarrar × Agarrar** ferem os dois. **Refletir × Refletir**, **Defesa × Defesa** e **Projétil × Projétil** só dão feedback visual (as ondas, os escudos, a colisão no ar), sem dano para ninguém.
 - Cada ação tem **3 cargas**, que só importam dentro do Combo: repetir a mesma ação gasta uma carga, e sem carga não dá para repetir. As cargas recarregam quando zeram.
-- **Combo** (3 por jogador, **não recarregam**): permite jogar **2 ações** no mesmo turno. O combo **só se completa se a primeira ação realmente conectar** — se ela for bloqueada, espelhada ou ignorada, a segunda nem acontece. **O combo só é gasto se ele acontecer de verdade**, então dá para arriscar e tentar de novo. Uma ação que não tem oposição no turno acerta direto.
+- **Combo** (3 por jogador, **não recarregam**): permite jogar **2 ações** no mesmo turno. O combo **só se completa se a primeira ação realmente conectar** - se ela for bloqueada, espelhada ou ignorada, a segunda nem acontece. **O combo só é gasto se ele acontecer de verdade**, então dá para arriscar e tentar de novo. A roda tem 5 posições e cada uma enfrenta sempre uma das outras 4, então toda ação tem oposição: quem não joga nada simplesmente não causa dano.
 - Turno de escolha: **5 segundos** para escolher e confirmar. Se não confirmar, o que já foi escolhido é usado; sem nenhuma escolha, o sistema não conta ações. Se o inimigo for uma bola **Tempo**, você tem **1 segundo a menos** (vale também no Vs Máquina quando a máquina é o Tempo).
 - **Frenesi**: quando um jogador chega à metade da vida, o tempo cai para **3 segundos** por turno e a tela fica com aviso vermelho.
 - **Sala online com ou sem tempo**: quem **cria a sala** escolhe, na tela do modo online, se os turnos terão cronômetro. Em **Sem tempo** o relógio vira **∞**, ninguém é bloqueado por demorar, e o Frenesi não aperta o tempo. Os dois lados entram na mesma regra. Nos outros modos (Vs Máquina e Treino) o cronômetro continua sempre valendo.
@@ -77,10 +77,26 @@ Os multiplicadores valem para a bola do jogador que vence a troca (ex.: uma bola
 ```
 index.html   página e telas (menu, seleção, batalha, game over)
 style.css    visual e animações CSS
-game.js      toda a lógica, regras, IA, sons e desenho da arena em canvas
+dados.js     as tabelas (as 6 bolas, as 5 ações) e a regra da roda
+jogo.js      o estado compartilhado e o fluxo da partida
+replay.js    gravação, persistência e reprodução dos replays
+audio.js     sons e música
+telas.js     navegação de telas, coleção de bolas, configurações
+controles.js painéis, HUD, a escolha da jogada e a máquina
+regras.js    a roda decide: dano, combo, agarrar e contragolpe
+online.js    salas e partida online (PeerJS/WebRTC)
+tutorial.js  o tutorial
+arena.js     desenho e animação da arena (o canvas)
 ```
 
-Para ajustar balanceamento, edite as constantes no topo de `game.js`:
+Os arquivos `.js` são **scripts comuns, não módulos**: todos dividem o mesmo
+escopo global, e é por isso que o jogo abre com dois cliques, sem servidor. A
+ordem das tags `<script>` no `index.html` só importa para o que roda no momento
+de ler o arquivo — o resto se liga por funções, que só são chamadas depois que
+tudo carregou. O `arena.js` vai por último porque é ele que inicia o loop de
+desenho.
+
+Para ajustar balanceamento, edite as constantes no topo de `dados.js`:
 `BASE_DMG` (dano base), `MAX_HP` (vida), `DECISION_SLOW`/`DECISION_FAST` (tempos das fases), `USE_PER_ACTION` (usos por ação) e `TEMPO_STACK_CAP`/`TEMPO_HEAL_PER_STACK` (stacks e cura da bola Tempo).
 
 ## (Opcional) Rodar com servidor HTTP

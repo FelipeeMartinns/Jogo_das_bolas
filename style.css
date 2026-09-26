@@ -533,6 +533,89 @@ body.tutorial #arena {
 #timer-label.tight { color: var(--bad); text-shadow: 0 0 18px #ff5c5c88; }
 #phase-label { font-size: 13px; color: var(--text-dim); margin-top: 4px; min-height: 16px; }
 
+/* Saída da batalha: discreta de propósito, fica no meio do HUD e não compete
+   com as ações. some quando a partida acaba, porque não há mais o que sair. */
+.hud-exit {
+  margin-top: 6px;
+  background: none;
+  border: 1px solid #ffffff26;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.hud-exit:hover { color: var(--bad); border-color: var(--bad); background: #ff5c5c1a; }
+.hud-exit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+body.partida-encerrada .hud-exit { display: none; }
+
+/* ---------------- Replay ---------------- */
+/* During the replay the arena shows the fight; the two choice columns are
+   hidden because the replay is precisely the part with no choices. */
+body.em-replay .panel { display: none; }
+body.em-replay #top-hud .hud-exit { display: none; }
+
+#replay-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: #0b1020dd;
+  border: 1px solid #ffffff26;
+  backdrop-filter: blur(6px);
+  z-index: 5;
+}
+.replay-tag {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--accent-2);
+  text-shadow: 0 0 12px #35a7ff88;
+}
+#replay-bar .btn { padding: 5px 14px; font-size: 12px; }
+
+/* list of saved replays */
+/* The box is a column of fixed size: the list takes the leftover height and
+   scrolls inside itself, so the buttons below never get pushed out of view.
+   Without `flex` + `min-height: 0` the list grows with its content and the
+   "Voltar" ends up below the visible area. */
+.replay-box { max-height: 88vh; display: flex; flex-direction: column; }
+.replay-aviso { font-size: 12px; color: var(--text-dim); margin: 0 0 14px; }
+.replay-aviso-erro { color: var(--bad); }
+.replay-vazio { text-align: center; color: var(--text-dim); font-size: 14px; padding: 28px 0; }
+#replay-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.replay-box .menu-buttons { margin-bottom: 0; flex: 0 0 auto; }
+.replay-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #ffffff08;
+  border: 1px solid #ffffff14;
+}
+.replay-info { flex: 1; text-align: left; min-width: 0; }
+.replay-titulo { font-size: 15px; font-weight: 700; }
+.replay-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.replay-acoes { display: flex; align-items: center; gap: 6px; }
+.replay-btn { padding: 8px 18px; font-size: 13px; }
+.replay-apagar { font-size: 12px; padding: 8px 10px; }
+
 /* Arena */
 #arena-row {
   width: min(1180px, 100%);
