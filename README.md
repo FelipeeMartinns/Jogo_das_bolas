@@ -2,6 +2,10 @@
 
 Um jogo de luta entre bolas elementais, jogado em turnos no navegador. Cada jogador escolhe em segredo sua jogada, e o sistema resolve quem levou a melhor. Você joga contra a máquina ou contra outro jogador pela internet.
 
+## jogue agora em:
+
+https://felipeemartinns.github.io/Jogo_das_bolas/
+
 ## Como rodar
 
 Basta abrir o arquivo `index.html` em um navegador moderno (Chrome, Edge, Firefox):
@@ -13,11 +17,11 @@ Não precisa instalar nada nem usar servidor. [Servir via HTTP](#opcional-rodar-
 
 ### Modos de jogo
 
-| Modo        | Descrição                                        |
-|-------------|--------------------------------------------------|
-| Vs Máquina  | Um humano contra a máquina (IA de contra-ataque) |
-| Online      | Dois jogadores pela internet (PeerJS/WebRTC), com ou sem tempo por turno |
-| Tutorial    | Aprendizado guiado, do primeiro turno à Incineração |
+| Modo       | Descrição                                                                |
+| ---------- | ------------------------------------------------------------------------ |
+| Vs Máquina | Um humano contra a máquina (IA de contra-ataque)                         |
+| Online     | Dois jogadores pela internet (PeerJS/WebRTC), com ou sem tempo por turno |
+| Tutorial   | Aprendizado guiado, do primeiro turno à Incineração                      |
 
 O tutorial joga uma partida de verdade com você como **Pedra** contra um oponente
 fixo chamado **Treino** (que não pode te eliminar). Ele explica onde clicar, o
@@ -30,7 +34,7 @@ momento pelo ✕ no cartão do coach.
 A escolha da jogada é feita por teclado ou clique nos botões do painel.
 
 | Ação      | Tecla |
-|-----------|-------|
+| --------- | ----- |
 | Ataque    | Q     |
 | Defesa    | W     |
 | Projétil  | E     |
@@ -48,6 +52,7 @@ A escolha da jogada é feita por teclado ou clique nos botões do painel.
   ```
 
   Cada ação vence as duas à sua direita na roda. É a única regra do jogo: **não existe par sem vencedor**, e todas as ações ficam em **2 vitórias e 2 derrotas**. Com 4 ações isso era impossível (a soma não fechava), por isso havia um ciclo mais duas exceções — que era justamente o que deixava o jogo desbalanceado. Com 5, a regra é uma frase só e o ciclo antigo de 4 continua idêntico dentro dela.
+
 - **Contragolpe**: a **Defesa** segura o **Ataque** e o **Agarrar** — são os dois únicos confrontos que abrem a janela. Aí acende um botão amarelo com **2 segundos** para apertar; apertar a tempo causa **+1 de dano** no atacante.
 - **Agarrar** pega o **Ataque** e o **Refletir**, e **cancela a 2ª ação do Combo** do adversário. Só cancela se ele **ganhou** o confronto (perde para Projétil e Defesa) e **nunca cancela uma habilidade ativa** — ela é de uso único e perdê-la sem errar a jogada seria injusto. A ação cancelada não gasta o Combo.
 - **Refletir** causa **+1 de dano** contra o Projétil e, contra a Defesa, **usa o escudo do próprio inimigo como ataque** — o Pedra atira a própria parede de pedra contra ele.
@@ -61,13 +66,13 @@ A escolha da jogada é feita por teclado ou clique nos botões do painel.
 
 ## As bolas
 
-| Bola | Vantagem |
-|------|----------|
-| **Fogo** | Todo projétil que acerta acumula +2 de stacks. Projéteis causam só o dano base; a habilidade ativa **Incineração** (botão no turno) consome os stacks e lança todo o dano acumulado no inimigo. |
-| **Pedra** | Ataques causam dano dobrado — inclusive o Contragolpe, então é a melhor defensora do jogo. |
-| **Água**  | Refletir causa **+1 de dano** em qualquer reflexo. |
-| **Ar**    | Ataques causam **+1** ao acertar um Projétil e **+2** ao acertar um Refletir; Projétil causa **+2** ao acertar a Defesa. |
-| **Raio**  | Ao chegar à metade da vida, energiza. A habilidade ativa (botão **Raio** no turno, uso único) causa **2 de dano**, bloqueia 1 ação aleatória dele por **3 turnos** e concede **dano dobrado permanente** para o Raio pelo resto da partida. |
+| Bola      | Vantagem                                                                                                                                                                                                                                                                                                                                    |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fogo**  | Todo projétil que acerta acumula +2 de stacks. Projéteis causam só o dano base; a habilidade ativa **Incineração** (botão no turno) consome os stacks e lança todo o dano acumulado no inimigo.                                                                                                                                             |
+| **Pedra** | Ataques causam dano dobrado — inclusive o Contragolpe, então é a melhor defensora do jogo.                                                                                                                                                                                                                                                  |
+| **Água**  | Refletir causa **+1 de dano** em qualquer reflexo.                                                                                                                                                                                                                                                                                          |
+| **Ar**    | Ataques causam **+1** ao acertar um Projétil e **+2** ao acertar um Refletir; Projétil causa **+2** ao acertar a Defesa.                                                                                                                                                                                                                    |
+| **Raio**  | Ao chegar à metade da vida, energiza. A habilidade ativa (botão **Raio** no turno, uso único) causa **2 de dano**, bloqueia 1 ação aleatória dele por **3 turnos** e concede **dano dobrado permanente** para o Raio pelo resto da partida.                                                                                                 |
 | **Tempo** | Reduz em **1 segundo** apenas o tempo do inimigo — vale mesmo no **Vs Máquina** se a máquina for o Tempo. Ganha **1 stack** por ponto de dano sofrido (máx. 7); a habilidade ativa **Regenerar** (botão no turno, **uso único**) recupera **1 de vida por stack** e, após usar, o Tempo **perde 1 de dano em todas as ações por 3 turnos**. |
 
 Os multiplicadores valem para a bola do jogador que vence a troca (ex.: uma bola Pedra que vence com um Ataque causa 4 de dano; a Água que reflete um Projétil causa 4). O maior dano posible O maior dano de **uma ação normal** é **5**, do Contragolpe da bola Pedra. As habilidades ativas furam esse teto: o **Raio energizado** chega a **6**, e a **Incineração** do Fogo lança todo o dano acumulado de uma vez.
