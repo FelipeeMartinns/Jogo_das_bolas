@@ -120,6 +120,62 @@ html, body {
 }
 .room-input:focus { border-color: var(--accent-2); box-shadow: 0 0 14px #35a7ff44; }
 
+/* escolha do tempo do turno: quem cria a sala decide */
+.time-choice {
+  background: #ffffff0d;
+  border: 1px solid #ffffff1a;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  text-align: left;
+}
+.time-choice[hidden] { display: none; }
+.time-choice-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.time-choice-opts { display: flex; gap: 8px; }
+.time-opt {
+  flex: 1;
+  cursor: pointer;
+  border: 1px solid #ffffff26;
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 9px 8px;
+  line-height: 1.25;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.time-opt small {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+.time-opt:hover { border-color: var(--accent-2); }
+.time-opt.on {
+  border-color: var(--good);
+  background: #2fbf6f26;
+  color: #fff;
+}
+.time-opt.on small { color: #bff0d4; }
+.time-opt:disabled { cursor: not-allowed; opacity: .55; }
+.time-opt:disabled:hover { border-color: #ffffff26; }
+.time-choice-hint {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-top: 9px;
+  line-height: 1.4;
+}
+
 /* ---------- CONFIGURAÇÕES ---------- */
 .setting-row {
   display: flex;
@@ -176,11 +232,184 @@ html, body {
 .rules-box ul { padding-left: 20px; }
 .rules-box li { margin-bottom: 6px; }
 
+/* ---------- COACH DO TUTORIAL ---------- */
+.coach {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(660px, calc(100% - 24px));
+  z-index: 6;
+  pointer-events: none;
+}
+.coach-inner {
+  pointer-events: auto;
+  background: #10142ce8;
+  border: 1px solid #ffffff2e;
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 34px #000000aa;
+}
+.coach-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.coach-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #0d1021;
+  background: linear-gradient(90deg, var(--accent), #ffd23f);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+.coach-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+.coach-x {
+  flex: none;
+  cursor: pointer;
+  border: none;
+  background: #ffffff1a;
+  color: var(--text-dim);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+}
+.coach-x:hover { background: #ffffff33; color: var(--text); }
+.coach-text {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.coach-text b { color: var(--text); }
+.coach-goal {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  background: #ff7a2f1f;
+  border: 1px dashed #ff7a2f66;
+  border-radius: 10px;
+  padding: 7px 11px;
+}
+.coach-goal::before {
+  content: '▶';
+  font-size: 10px;
+  color: var(--accent);
+  animation: coachPulse 1s ease-in-out infinite;
+}
+@keyframes coachPulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+.coach-foot { margin-top: 10px; display: flex; justify-content: flex-end; }
+.coach-foot .btn { padding: 9px 18px; font-size: 14px; }
+
+/* modo objetivo: só a tarja, sem roubar o toque dos botões de ação */
+.coach.chip { pointer-events: none; }
+.coach.chip .coach-inner { padding: 7px 10px; pointer-events: none; }
+.coach.chip .coach-title,
+.coach.chip .coach-text,
+.coach.chip .coach-foot { display: none; }
+.coach.chip .coach-goal { margin-top: 0; }
+.coach.chip .coach-x { pointer-events: auto; }
+
 /* ---------- SELEÇÃO ---------- */
+body.tutorial #arena {
+  box-shadow: inset 0 0 80px #000000aa, 0 0 0 2px #ff7a2f55;
+}
+
 #screen-select h2 {
   margin-bottom: 28px;
   font-size: 28px;
   text-align: center;
+}
+
+#screen-balls h2 {
+  margin-bottom: 22px;
+  font-size: 28px;
+  text-align: center;
+}
+
+/* grade compacta só com as bolas; a descrição fica num painel separado */
+.balls-grid {
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 14px;
+  width: min(760px, 92%);
+}
+.balls-grid .select-card { padding: 16px 10px; }
+.balls-grid .select-card h3 { margin: 6px 0 0; font-size: 16px; }
+
+.balls-detail {
+  width: min(760px, 92%);
+  min-height: 92px;
+  margin-top: 18px;
+  background: var(--panel);
+  border: 2px solid transparent;
+  border-radius: 16px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  text-align: left;
+}
+.balls-detail .select-ball {
+  width: 76px;
+  height: 76px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+.balls-txt { min-width: 0; }
+.balls-detail h3 { margin: 0 0 6px; font-size: 20px; }
+.balls-detail p  { margin: 0; font-size: 14px; color: var(--text-dim); line-height: 1.55; }
+.balls-hint { flex: 1; text-align: center; color: var(--text-dim); font-size: 13.5px; }
+
+/* botão circular de voltar, fixo no canto superior */
+.btn-round-back {
+  position: fixed;
+  top: calc(18px + env(safe-area-inset-top));
+  left: calc(18px + env(safe-area-inset-left));
+  z-index: 20;
+  box-sizing: border-box;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ffffff40;
+  border-radius: 50%;
+  background: #262c52f2;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform .1s, filter .15s, border-color .15s;
+}
+.btn-round-back:hover { filter: brightness(1.2); border-color: var(--accent-2); }
+.btn-round-back:active { transform: scale(.9); }
+.btn-round-back svg {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .select-grid {
@@ -410,6 +639,8 @@ html, body {
   color: var(--good);
   margin-top: 1px;
 }
+.action-btn .count.hidden { display: none; }
+.action-btn .count.low { color: #ffb0a0; }
 .combo-btn { border-style: dashed; border-color: var(--accent); }
 .combo-btn .count { color: var(--accent); }
 .active-btn { border-style: dashed; }
@@ -428,6 +659,57 @@ html, body {
 .action-btn.combo-picked { background: #ff7a2f33; border-color: var(--accent); }
 .action-btn.slot0 { border-color: var(--bad); }
 .action-btn.slot1 { border-color: var(--accent-2); }
+
+/* ------ Contragolpe: botão redondo amarelo no fim da fileira ------ */
+.counter-slot {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+.counter-btn {
+  position: relative;
+  width: 78px;
+  height: 78px;
+  padding: 0 8px;
+  border-radius: 50%;
+  border: 3px solid #ffe08a;
+  background: radial-gradient(circle at 35% 28%, #fff6c9, #ffc107 58%, #a97400);
+  color: #2b1b00;
+  font-weight: 900;
+  font-size: 12px;
+  line-height: 1.15;
+  letter-spacing: .3px;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-shadow: 0 0 26px #ffc107cc, 0 0 60px #ffc10755, inset 0 -7px 14px rgba(0,0,0,.28);
+  animation: counter-pop .2s ease-out;
+}
+.counter-btn:hover { filter: brightness(1.08); }
+.counter-btn:active { transform: scale(.93); }
+.counter-btn .cb-label { position: relative; z-index: 1; }
+.counter-btn .cb-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 7px;
+  background: #2b1b00;
+  transform-origin: left center;
+  animation: counter-drain var(--dur, 2000ms) linear forwards;
+}
+@keyframes counter-pop {
+  from { transform: scale(.35); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+@keyframes counter-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
 
 .btn-ok {
   background: linear-gradient(90deg, #2fbf6f, #35a7ff);
@@ -522,10 +804,12 @@ body.frenzy::after {
 
   #screen-select {
     justify-content: flex-start;
-    padding: 14px 0;
+    padding: 76px 0 14px;
     overflow-y: auto;
   }
   #screen-select h2 { font-size: 19px; margin-bottom: 14px; }
+  .btn-round-back { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+  .btn-round-back svg { width: 22px; height: 22px; }
   .select-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
@@ -537,6 +821,32 @@ body.frenzy::after {
   .select-card h3 { font-size: 15px; margin: 4px 0 6px; }
   .select-card p { font-size: 11.5px; }
   .select-note { margin-top: 14px; font-size: 12.5px; text-align: center; }
+
+  #screen-balls {
+    justify-content: flex-start;
+    padding: 76px 0 14px;
+    overflow-y: auto;
+  }
+  #screen-balls h2 { font-size: 19px; margin-bottom: 14px; }
+  .balls-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    width: 94%;
+  }
+  .balls-grid .select-card { padding: 12px 6px; }
+  .balls-grid .select-card:hover { transform: none; }
+  .balls-grid .select-ball { width: 52px; height: 52px; margin-bottom: 6px; }
+  .balls-grid .select-card h3 { font-size: 13px; margin: 4px 0 0; }
+  .balls-detail {
+    width: 94%;
+    min-height: 84px;
+    margin-top: 14px;
+    padding: 14px 16px;
+    gap: 12px;
+  }
+  .balls-detail .select-ball { width: 56px; height: 56px; }
+  .balls-detail h3 { font-size: 17px; margin-bottom: 5px; }
+  .balls-detail p { font-size: 12.5px; line-height: 1.5; }
 
   .screen-battle {
     padding: 8px;
@@ -556,7 +866,15 @@ body.frenzy::after {
   .action-btn .act-nome { font-size: 12px; }
   .action-btn .key { font-size: 9px; }
   .action-btn .count { font-size: 10px; }
+  .counter-btn { width: 64px; height: 64px; font-size: 11px; }
   .btn-ok { padding: 10px; font-size: 14px; }
+
+  .coach { top: 6px; width: calc(100% - 16px); }
+  .coach-inner { padding: 9px 10px; border-radius: 12px; }
+  .coach-title { font-size: 13.5px; }
+  .coach-text { font-size: 12.5px; line-height: 1.5; }
+  .coach-goal { font-size: 12px; padding: 6px 9px; }
+  .coach-foot .btn { padding: 8px 15px; font-size: 13px; }
 
   .overlay-box { padding: 24px 18px; width: 92%; max-width: 380px; }
   .overlay-box h1 { font-size: 26px; }

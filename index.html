@@ -3,21 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Jogo das Bolas</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Bolistic</title>
+  <link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 
   <!-- ============ MENU ============ -->
   <div id="screen-menu" class="screen">
     <div class="menu-box">
-      <h1 class="title">JOGO DAS BOLAS</h1>
-      <p class="subtitle">Um jogo de luta entre bolas elementais!</p>
+      <h1 class="title">BOLISTIC</h1>
 
       <div class="menu-buttons">
-        <button class="btn btn-primary" onclick="startSelect('hotseat')">2 Jogadores (Hot-seat)</button>
-        <button class="btn btn-primary" onclick="startSelect('machine')">Vs Máquina</button>
         <button class="btn btn-primary" onclick="startOnline()">Online</button>
+        <button class="btn btn-primary" onclick="startSelect('machine')">Vs Máquina</button>
+        <button class="btn btn-secondary" onclick="startTutorial()">Tutorial</button>
+        <button class="btn btn-secondary" onclick="openBalls()">Bolas</button>
       </div>
 
       <div class="menu-plain-row">
@@ -28,11 +28,15 @@
       <div id="rules-box" class="rules-box" hidden>
         <h3>Mecânicas</h3>
         <ul>
-          <li>Cada jogada escolhe uma ação: <b>Ataque</b>, <b>Defesa</b>, <b>Projétil</b> ou <b>Refletir</b>.</li>
-          <li><b>Ataque</b> vence Projétil · <b>Projétil</b> vence Defesa · <b>Defesa</b> vence Ataque e Refletir · <b>Refletir</b> devolve um Projétil contra quem o lançou.</li>
-          <li>Defender um ataque com sucesso causa dano no atacante.</li>
-          <li>Cada ação tem 3 usos. Quando os 3 acabam, eles recarregam no turno seguinte.</li>
-          <li><b>Combo</b> (3 no total, NÃO recarregam): permite jogar 2 ações no mesmo turno.</li>
+          <li>Cada jogada escolhe uma ação: <b>Ataque</b>, <b>Refletir</b>, <b>Projétil</b>, <b>Defesa</b> ou <b>Agarrar</b>.</li>
+          <li>As cinco ações formam uma <b>roda</b>: cada uma vence as <b>duas seguintes</b> e perde para as duas anteriores. <b>Ataque → Refletir → Projétil → Defesa → Agarrar → (volta ao Ataque)</b>. Assim todas vencem 2 e perdem 2, e nenhum par fica sem resultado.</li>
+          <li><b>Contragolpe:</b> a <b>Defesa</b> segura o <b>Ataque</b> e o <b>Agarrar</b> — são os dois únicos casos. Quando segura, acende um <b>botão amarelo</b> com <b>2 segundos</b> para apertar. Se apertar a tempo, você contra-ataca e causa <b>+1 de dano</b>.</li>
+          <li><b>Agarrar</b> pega o <b>Ataque</b> e o <b>Refletir</b> e <b>cancela a 2ª ação do Combo</b> do adversário — desde que ele tenha ganado o confronto. Habilidade ativa nunca é cancelada.</li>
+          <li><b>Refletir</b> causa <b>+1 de dano</b> contra o <b>Projétil</b> e contra a <b>Defesa</b> usa o escudo do próprio inimigo como ataque.</li>
+          <li>O <b>Projétil</b> vence a <b>Defesa</b> com o dano normal, sem nenhuma redução, e também vence o <b>Agarrar</b>.</li>
+          <li>Espelhos: <b>Ataque × Ataque</b> e <b>Agarrar × Agarrar</b> ferem os dois; <b>Refletir × Refletir</b>, <b>Defesa × Defesa</b> e <b>Projétil × Projétil</b> só dão feedback visual, sem dano.</li>
+          <li>Cada ação tem 3 cargas. As cargas só importam dentro do Combo: repetir a mesma ação gasta uma carga, e sem carga não dá para repetir.</li>
+          <li><b>Combo</b> (3 no total, NÃO recarregam): permite jogar 2 ações no mesmo turno — mas <b>só se a primeira ação acertar alguma coisa</b>. Se ela falhar, a segunda nem acontece <b>e você não gasta o combo</b>.</li>
           <li>Um projétil ou ataque sem oposição no turno acerta direto.</li>
           <li>Você tem <b>5 segundos</b> por turno (3 segundos no frenesi) para escolher e confirmar. Se o inimigo for uma bola <b>Tempo</b>, você tem <b>1 segundo a menos</b>.</li>
           <li><b>Frenesi:</b> quando um jogador chega à metade da vida, o tempo cai para 3 segundos.</li>
@@ -40,18 +44,35 @@
         <h3>Bolas</h3>
         <ul>
           <li><b>Fogo:</b> todo projétil acertado acumula +2 de stacks. Projéteis causam só o dano base; a habilidade ativa <b>Incineração</b> (botão no turno) consome os stacks e lança todo o dano acumulado no inimigo.</li>
-          <li><b>Pedra:</b> ataques causam dano dobrado.</li>
-          <li><b>Água:</b> refletir uma habilidade inimiga causa dano dobrado.</li>
-          <li><b>Ar:</b> +1 de dano ao acertar um projétil, +2 ao acertar defesa ou ao refletir.</li>
-          <li><b>Raio:</b> ao chegar à metade da vida, energiza. Usar a habilidade ativa (botão <b>Raio</b> no turno) eletrocuta o inimigo e bloqueia 1 ação aleatória dele por <b>3 turnos</b> — além disso, o Raio ganha <b>dano dobrado permanente</b> pelo resto da partida (uso único).</li>
+          <li><b>Pedra:</b> ataques causam dano dobrado — inclusive o Contragolpe, então é a melhor defensora do jogo.</li>
+          <li><b>Água:</b> Refletir causa +1 de dano em qualquer reflexo (e o Refletir já dá +1 contra Projétil, então a Água tem o melhor reflexo do jogo).</li>
+          <li><b>Ar:</b> Ataques causam +1 contra Projétil e +2 contra Refletir; Projétil causa +2 contra Defesa.</li>
+          <li><b>Raio:</b> ao chegar à metade da vida, energiza. Usar a habilidade ativa (botão <b>Raio</b> no turno) causa <b>2 de dano</b>, bloqueia 1 ação aleatória dele por <b>3 turnos</b> — além disso, o Raio ganha <b>dano dobrado permanente</b> pelo resto da partida (uso único).</li>
           <li><b>Tempo:</b> reduz em <b>1 segundo</b> apenas o tempo do inimigo (vale mesmo no modo Vs Máquina, se a máquina for o Tempo). Ganha <b>1 stack</b> por ponto de dano sofrido (máx. 7); a habilidade ativa <b>Regenerar</b> (botão no turno, <b>uso único</b>) recupera <b>1 de vida por stack</b> e, após usar, o Tempo <b>perde 1 de dano em todas as ações por 3 turnos</b>.</li>
         </ul>
       </div>
     </div>
   </div>
 
+  <!-- ============ BOLAS ============ -->
+  <div id="screen-balls" class="screen" hidden>
+    <button class="btn-round-back" onclick="backFromBalls()" aria-label="Voltar ao menu">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
+        <path d="M15 4.5 L7.5 12 L15 19.5" />
+      </svg>
+    </button>
+    <h2>Bolas</h2>
+    <div id="balls-grid" class="select-grid balls-grid"></div>
+    <div id="balls-detail" class="balls-detail"></div>
+  </div>
+
   <!-- ============ SELEÇÃO ============ -->
   <div id="screen-select" class="screen" hidden>
+    <button class="btn-round-back" onclick="backFromSelect()" aria-label="Voltar ao menu">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
+        <path d="M15 4.5 L7.5 12 L15 19.5" />
+      </svg>
+    </button>
     <h2 id="select-title">Jogador 1 — escolha sua bola</h2>
     <div id="select-grid" class="select-grid"></div>
     <div id="select-note" class="select-note"></div>
@@ -62,6 +83,17 @@
     <div class="menu-box" style="max-width: 540px">
       <h1 class="title" style="font-size: 36px; letter-spacing: 4px">MODO ONLINE</h1>
       <p class="subtitle">Lute contra outro jogador pela internet.</p>
+
+      <div id="online-time" class="time-choice">
+        <div class="time-choice-label">Tempo por turno</div>
+        <div class="time-choice-opts" role="radiogroup" aria-label="Tempo por turno">
+          <button type="button" class="time-opt" id="opt-time-on" role="radio" aria-checked="true"
+            onclick="pickTimeChoice(true)">Com tempo<small>5s por turno</small></button>
+          <button type="button" class="time-opt" id="opt-time-off" role="radio" aria-checked="false"
+            onclick="pickTimeChoice(false)">Sem tempo<small>pense à vontade</small></button>
+        </div>
+        <div class="time-choice-hint" id="time-choice-hint">Quem cria a sala escolhe. Sem tempo, ninguém é bloqueado por pensar demais.</div>
+      </div>
 
       <div id="online-actions" class="menu-buttons">
         <button class="btn btn-primary" onclick="createRoom()">Criar sala</button>
@@ -105,20 +137,35 @@
     <div id="arena-row">
       <canvas id="arena" width="820" height="420"></canvas>
       <div id="banner" hidden></div>
+
+      <div id="coach" class="coach" hidden>
+        <div class="coach-inner">
+          <div class="coach-top">
+            <span class="coach-tag" id="coach-tag">Tutorial</span>
+            <span class="coach-title" id="coach-title"></span>
+            <button class="coach-x" id="coach-skip" onclick="skipTutorial()" aria-label="Pular tutorial">✕</button>
+          </div>
+          <p class="coach-text" id="coach-text"></p>
+          <div class="coach-goal" id="coach-goal" hidden></div>
+          <div class="coach-foot" id="coach-foot">
+            <button class="btn btn-primary" id="coach-next" onclick="tutorialNext()">Continuar</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="panels">
       <div class="panel" id="panel-1">
-        <div class="panel-head" id="panel-1-head">JOGADOR 1</div>
+        <div class="panel-head" id="panel-1-head">VOCÊ</div>
         <div class="action-buttons" id="buttons-1"></div>
         <div class="selected" id="selected-1"></div>
         <button class="btn btn-ok" id="ok-1" onclick="confirmPlayer('p1')">OK [A]</button>
       </div>
       <div class="panel panel-machine" id="panel-2">
-        <div class="panel-head" id="panel-2-head">JOGADOR 2</div>
+        <div class="panel-head" id="panel-2-head">OPONENTE</div>
         <div class="action-buttons" id="buttons-2"></div>
         <div class="selected" id="selected-2"></div>
-        <button class="btn btn-ok" id="ok-2" onclick="confirmPlayer('p2')">OK [L]</button>
+        <button class="btn btn-ok" id="ok-2" onclick="confirmPlayer('p2')">OK [A]</button>
       </div>
     </div>
   </div>
@@ -163,6 +210,6 @@
   </div>
 
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="game.js"></script>
+  <script src="game.js?v=13"></script>
 </body>
 </html>
